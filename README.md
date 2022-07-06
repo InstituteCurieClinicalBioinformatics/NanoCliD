@@ -82,3 +82,81 @@ Other arguments are available for nanoclid :
 - -s, --samples : Only run analysis on these samples. Must be comma separated.
 - -t, --configTemplate : Path to the config template. (default is config/config.yaml)
 - -T, --outputTemplate : Path to the output template. (default is config/ADAPTIVE.template)
+
+Results tree of NanoCliD
+
+```bash
+
+├── ADAPTIVE_00_1
+│   ├── FASTQ
+│   │   └── ADAPTIVE_00_1.fastq.gz
+│   ├── Mapping
+│   │   ├── ADAPTIVE_00_1.bam
+│   │   └── ADAPTIVE_00_1.bam.bai
+│   ├── Methylation
+│   │   ├── ADAPTIVE_00_1.index.txt
+│   │   └── ADAPTIVE_00_1.methylation_calls.tsv
+│   └── QC
+│       ├── ADAPTIVE_00_1_mergedStats_offtarget.txt
+│       └── ADAPTIVE_00_1_mergedStats_ontarget.txt
+├── ADAPTIVE_00_2
+│   ├── FASTQ
+│   │   └── ADAPTIVE_00_2.fastq.gz
+│   ├── Mapping
+│   │   ├── ADAPTIVE_00_2.bam
+│   │   └── ADAPTIVE_00_2.bam.bai
+│   ├── Methylation
+│   │   ├── ADAPTIVE_00_2.index.txt
+│   │   └── ADAPTIVE_00_2.methylation_calls.tsv
+│   └── QC
+│      ├── ADAPTIVE_00_2_mergedStats_offtarget.txt
+│      └── ADAPTIVE_00_2_mergedStats_ontarget.txt
+└── All
+    ├── Circos
+    │   ├── ADAPTIVE_00_gene1.csv
+    │   ├── ADAPTIVE_00_gene2.csv
+    │   └── circos.txt
+    ├── CNV
+    │   ├── ADAPTIVE_00_amp_plot.pdf
+    │   ├── ADAPTIVE_00_cnv_plot.pdf
+    │   ├── ADAPTIVE_00_cnv_plot_segments.txt
+    │   ├── ADAPTIVE_00_gc.pdf
+    │   ├── ADAPTIVE_00_readlength.pdf
+    │   └── ADAPTIVE_00_readlength_summary.txt
+    ├── Mapping
+    │   ├── ADAPTIVE_00.bam
+    │   └── ADAPTIVE_00.bam.bai
+    ├── Methylation
+    │   └── ADAPTIVE_00.methylation_calls.tsv
+    ├── QC
+    │   ├── ADAPTIVE_00_offTarget.bed
+    │   ├── ADAPTIVE_00_qc_offtarget.tsv
+    │   ├── ADAPTIVE_00_qc_ontarget.tsv
+    │   ├── ADAPTIVE_00_run_qc_offtarget.tsv
+    │   └── ADAPTIVE_00_run_qc_ontarget.tsv
+    ├── SNV
+    │   ├── ADAPTIVE_00_annot.vcf
+    │   ├── ADAPTIVE_00.clair3.vcf.gz
+    │   ├── ADAPTIVE_00.clair3.vcf.gz.tbi
+    │   ├── ADAPTIVE_00.nanocaller.vcf.gz
+    │   ├── ADAPTIVE_00.nanocaller.vcf.gz.tbi
+    │   ├── ADAPTIVE_00.pepper.vcf.gz
+    │   ├── ADAPTIVE_00.pepper.vcf.gz.tbi
+    │   ├── ADAPTIVE_00.vcf.gz
+    │   └── ADAPTIVE_00.vcf.gz.tbi
+    └── SV
+        ├── ADAPTIVE_00.annotSV.tsv
+        ├── ADAPTIVE_00.merged.annotated.tsv
+        ├── ADAPTIVE_00.merged.vcf
+        ├── cuteSV
+        │   └── ADAPTIVE_00.cuteSV.vcf
+        ├── Nanovar
+        │   └── ADAPTIVE_00.nanovar.pass.vcf
+        ├── sniffles
+        │   └── ADAPTIVE_00.sniffles.vcf
+        └── SVIM
+            └── ADAPTIVE_00.svim.vcf
+
+```
+
+
