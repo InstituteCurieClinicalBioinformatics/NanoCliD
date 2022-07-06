@@ -6,7 +6,8 @@ NanoCliD uses Snakemake and python.
 # Prerequisites
 
 To run NanoCliD you'll need :
-  - python3 or higher
+  - python > 3.7 and pip3 
+  - python3-venv
   - singularity
 
 # Installation
@@ -16,15 +17,16 @@ To install NanoCliD first run :
 python3 nanoclid.py install
 ```
 
-The script makes each singularity images that will be used by NanoClid and initialises venv to run NanoClid.
+The script builds each singularity images that will be used by NanoClid and initialises venv to run NanoClid.
 
-Once the installation succeed, you can run the test part to check if NanoCliD is correctly installed. First source virtualenv in venv and run :
+Once the installation succeed, you can run the test part to check if NanoCliD is correctly installed. First source activate in venv and run :
 
-```python3
+```bash
+source venv/bin/activate
 python3 nanoclid.py test -R ${REF_DIR}
 ```
 
-_REF_DIR must contains fasta file, index files and genome of the genome reference_
+$REF_DIR must contains fasta file, index files and genome of the genome reference_
 
 If the comparison between run test outputs and expected outputs reports no differences, the installation is completed. 
 You can now use NanoCliD.
@@ -38,14 +40,28 @@ To run NanoCliD, the input folder must be organised as follow :
 RUN
 |----INJECTION_N
          |----NANOPORE_NOMENCLATURE
-                      |barcode_alignment.tsv
-                      |duty_time.csv
-                      |final_summary.tsv
                       |report.md
                       |sequencing_summary.txt
-                      |throughput.csv
                       |----fast5
-                      |----other_reports
+                      
+# for the small input test dataset                      
+ADAPTIVE_00
+├── ADAPTIVE_00_1
+│   └── subdir1
+│       └── subdir2
+│           ├── fast5
+│           │   ├── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_0.fast5
+│           │   └── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_100.fast5
+│           ├── report.md
+│           └── sequencing_summary.txt
+└── ADAPTIVE_00_2
+    └── subdir1
+        └── subdir2
+            ├── fast5
+            │   └── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_200.fast5
+            ├── report.md
+            └── sequencing_summary.txt
+
 ```
 
 As we used a minion to sequence DNA, this organisation should be generated automatically by the sequencer for each injection.
