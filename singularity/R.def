@@ -1,0 +1,40 @@
+bootstrap: docker
+from: conda/miniconda3-centos7
+
+%environment
+    PATH=/usr/local/envs/R/bin:$PATH
+    LC_ALL=en_US.utf-8
+    LANG=en_US.utf-8
+
+%post
+    echo "name: R
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+  - r
+dependencies:
+  - conda-forge::r-base
+  - conda-forge::r-readr
+  - conda-forge::r-biocmanager
+  - bioconda::bioconductor-genomicranges
+  - bioconda::bioconductor-ace
+  - bioconda::bioconductor-chippeakanno
+  - bioconda::bioconductor-qdnaseq
+  - bioconda::bioconductor-qdnaseq.hg19
+  - bioconda::bioconductor-rsamtools
+  - conda-forge::r-ggplot2
+  - conda-forge::r-plyr
+  - conda-forge::r-ggrepel
+  - conda-forge::r-ggpubr
+" > /opt/R.yml ;
+
+    yum install -y which   \
+    && yum clean all \
+    && conda env create -f /opt/R.yml \
+    && echo "source activate R" > ~/.bashrc \
+    && conda clean -a
+
+%runscript
+umask 007 && "$@"
+

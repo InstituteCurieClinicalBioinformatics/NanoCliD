@@ -1,0 +1,40 @@
+bootstrap: docker
+from: ubuntu:20.04
+
+%post
+    ##### System #####
+	apt update -y
+	apt upgrade -y
+    export DEBIAN_FRONTEND=noninteractive
+	# apt install -y  wget make curl unzip tclsh git
+	apt install -y make curl unzip git tclsh wget g++ gcc zlib1g-dev libghc-bzlib-dev liblzma-dev python curl libcurl4-openssl-dev tabix
+
+    ##### bedtools #####
+    wget https://github.com/arq5x/bedtools2/releases/download/v2.29.1/bedtools-2.29.1.tar.gz
+    tar -zxvf bedtools-2.29.1.tar.gz
+    cd bedtools2
+    make
+
+    #### bcftools ####
+    wget https://github.com/samtools/bcftools/releases/download/1.15.1/bcftools-1.15.1.tar.bz2
+    tar -vxjf bcftools-1.15.1.tar.bz2
+    cd bcftools-1.15.1
+    make
+
+    ##### annotSV #####
+    cd /
+    mkdir Annot
+    cd Annot
+    git clone https://github.com/lgmgeo/AnnotSV.git
+    cd /Annot/AnnotSV
+    sed -i 's/curl -C/curl -k -C/g' Makefile
+    make PREFIX=. install
+    make PREFIX=. install-human-annotation
+
+
+%environment
+	export ANNOTSV=/Annot/AnnotSV
+    export PATH=/bedtools2/bin/:/bedtools2/bcftools-1.15.1/:$PATH
+
+%runscript
+umask 007 && "$@"

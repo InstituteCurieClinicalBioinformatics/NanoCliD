@@ -1,0 +1,76 @@
+rule bamCoverage:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
+        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai")
+    output:
+        temp(os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.bw"))
+    params:
+        eff_size = config["cnv"]["effectiveGenomeSize"],
+        bin_size = config["cnv"]["binSize"],
+        brain_bed_5mb = config["cnv"]["brain_bed_5mb"]
+    threads: config["cnv"]["threads"]
+    log:
+        os.path.join(LOG_PATH, "calling/CNV", "{run}_bamCoverage.log")
+    container:
+        config["containers_path"]+ config["cnv"]["deeptoolssif"]
+    shell:
+        """
+        bamCoverage --normalizeUsing RPGC \
+              --numberOfProcessors {threads} \
+              --bam {input.bam} \
+              --outFileName {output} \
+              --outFileFormat bigwig  --effectiveGenomeSize {params.eff_size} --binSize {params.bin_size} 2> {log}
+        """
+
+
+rule bam2bigwig:
+    input:
+        os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.bw")
+    output:
+        temp(os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.tab"))
+    params:
+        brain_bed_5mb = os.path.join(config["git_dir"], "annotations", config["cnv"]["brain_bed_5mb"])
+    log:
+        os.path.join(LOG_PATH, "calling/CNV", "{run}_bam2bigwig.log")
+    container:
+        config["containers_path"]+ config["cnv"]["bigwigsif"]
+    shell:
+        """
+        bigWigAverageOverBed {input} {params.brain_bed_5mb} {output} 2> {log}
+        """
+
+
+rule copyNumber:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
+        tab = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.tab")
+    output:
+        cnv = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_cnv_plot.pdf"),
+        seg = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_cnv_plot_segments.txt"),
+        ampl = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_amp_plot.pdf"),
+        gc = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_gc.pdf"),
+        qc1 = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_readlength.pdf"),
+        qc2= os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_readlength_summary.txt")
+    params:
+        brain_bed = os.path.join(config["git_dir"], "annotations/" + config["cnv"]["brain_bed"]),
+        bin_size = config["cnv"]["binSize"],
+        genome_subsampling =  os.path.join(config["git_dir"], "annotations/" + config["cnv"]["genome_subsampling"]),
+        genome_version = config["genome_version"],
+        script = os.path.join(config["git_dir"], 'utils', config["cnv"]["script"]),
+        dirname = lambda wildcards, output: os.path.dirname(str(output[0]))
+    log:
+        os.path.join(LOG_PATH, "calling/CNV", "{run}_copyNumber.log")
+    container:
+        config["containers_path"]+ config["R"]["sif"]
+    shell:
+        """
+        Rscript {params.script} {input.tab} \
+            {input.bam} \
+            {params.dirname} \
+            {params.brain_bed} \
+            {params.bin_size} \
+            {params.genome_subsampling} \
+            {params.genome_version} \
+            "" \
+            {wildcards.run} 2> {log}
+        """

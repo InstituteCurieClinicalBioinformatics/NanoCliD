@@ -1,0 +1,8 @@
+bootstrap: docker
+from: quay.io/biocontainers/nanovar:1.4.1--py38hbff2b2d_1
+
+%post
+sed -i "s#os.path.join(os.path.dirname(nanovar.__file__), 'ref')#'/mnt'#g" /usr/local/bin/nanovar
+
+%runscript
+umask 007 && "$@"

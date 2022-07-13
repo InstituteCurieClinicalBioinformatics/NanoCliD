@@ -1,0 +1,5 @@
+bootstrap: docker
+from: genomicslab/nanocaller:3.0.0
+
+%runscript
+umask 007 && "$@"

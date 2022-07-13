@@ -1,0 +1,5 @@
+bootstrap: docker
+from: kishwars/pepper_deepvariant:r0.8
+
+%runscript
+umask 007 && "$@"

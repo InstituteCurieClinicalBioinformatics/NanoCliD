@@ -1,0 +1,5 @@
+bootstrap: docker
+from: quay.io/biocontainers/samtools:1.15.1--h1170115_0
+
+%runscript
+umask 007 && "$@"

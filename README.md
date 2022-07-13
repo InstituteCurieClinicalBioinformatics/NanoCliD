@@ -1,162 +1,94 @@
 # NanoCliD
+
+NanoCliD processes nanopore sequencing and adaptive sampling.
+
 NanoCliD is a toolkit designed to capture genomic alterations including methylation profile in nanopore data.
 
-NanoCliD uses Snakemake and python.
+## Getting started
 
-# Prerequisites
+To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
-To run NanoCliD you'll need :
-  - python > 3.7 and pip3 
-  - python3-venv
-  - singularity
+Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
 
-# Installation
-To install NanoCliD first run :
+## Add your files
 
-```python3
-python3 nanoclid.py install
-```
-
-The script builds each singularity images that will be used by NanoClid and initialises venv to run NanoClid.
-
-Once the installation succeed, you can run the test part to check if NanoCliD is correctly installed. First source activate in venv and run :
-
-```bash
-source venv/bin/activate
-python3 nanoclid.py test -R ${REF_DIR}
-```
-
-$REF_DIR must contains fasta file, index files and genome of the genome reference_
-
-If the comparison between run test outputs and expected outputs reports no differences, the installation is completed. 
-You can now use NanoCliD.
-
-# Run NanoCliD
-
-To run NanoCliD, the input folder must be organised as follow :
-
-
-```bash
-RUN
-|----INJECTION_N
-         |----NANOPORE_NOMENCLATURE
-                      |report.md
-                      |sequencing_summary.txt
-                      |----fast5
-                      
-# for the small input test dataset                      
-ADAPTIVE_00
-├── ADAPTIVE_00_1
-│   └── subdir1
-│       └── subdir2
-│           ├── fast5
-│           │   ├── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_0.fast5
-│           │   └── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_100.fast5
-│           ├── report.md
-│           └── sequencing_summary.txt
-└── ADAPTIVE_00_2
-    └── subdir1
-        └── subdir2
-            ├── fast5
-            │   └── FAK42335_2bf4f211a2e2d04662e50f27448cfd99dafbd7ee_200.fast5
-            ├── report.md
-            └── sequencing_summary.txt
+- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
+- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
 
 ```
-
-As we used a minion to sequence DNA, this organisation should be generated automatically by the sequencer for each injection.
-
-A minimal call for NanoClid is :
-
-```python3
-python3 nanoclid.py run --inputFolder ${INPUT} --run ${RUN} --refDir ${REF_DIR} --genomeVersion hg19|hg38 --bed ${BED} --gitDir ${GIT_DIR}
-```
-The inputFolder will be set as outputFolder if not set in command line.
-Other arguments are available for nanoclid :
-
-- -B, --bind : Path to bind for singularity images. Default is HOME
-- -c, --cores : Number of cores used by snakemake (default is 1)
-- -C, --containersPath : Path to containers tool for NanoCliD if moved out from the git repository
-- -d, --dryRun : Run NanoCliD in dry run mode
-- -p, --snakemakeParameters : Snakemake parameters to run NanoCliD (default is "-p --verbose --latency-wait 60 --keep-going --use-singularity")
-- -s, --samples : Only run analysis on these samples. Must be comma separated.
-- -t, --configTemplate : Path to the config template. (default is config/config.yaml)
-- -T, --outputTemplate : Path to the output template. (default is config/ADAPTIVE.template)
-
-Results tree of NanoCliD
-
-```bash
-
-├── ADAPTIVE_00_1
-│   ├── FASTQ
-│   │   └── ADAPTIVE_00_1.fastq.gz
-│   ├── Mapping
-│   │   ├── ADAPTIVE_00_1.bam
-│   │   └── ADAPTIVE_00_1.bam.bai
-│   ├── Methylation
-│   │   ├── ADAPTIVE_00_1.index.txt
-│   │   └── ADAPTIVE_00_1.methylation_calls.tsv
-│   └── QC
-│       ├── ADAPTIVE_00_1_mergedStats_offtarget.txt
-│       └── ADAPTIVE_00_1_mergedStats_ontarget.txt
-├── ADAPTIVE_00_2
-│   ├── FASTQ
-│   │   └── ADAPTIVE_00_2.fastq.gz
-│   ├── Mapping
-│   │   ├── ADAPTIVE_00_2.bam
-│   │   └── ADAPTIVE_00_2.bam.bai
-│   ├── Methylation
-│   │   ├── ADAPTIVE_00_2.index.txt
-│   │   └── ADAPTIVE_00_2.methylation_calls.tsv
-│   └── QC
-│      ├── ADAPTIVE_00_2_mergedStats_offtarget.txt
-│      └── ADAPTIVE_00_2_mergedStats_ontarget.txt
-└── All
-    ├── Circos
-    │   ├── ADAPTIVE_00_gene1.csv
-    │   ├── ADAPTIVE_00_gene2.csv
-    │   └── circos.txt
-    ├── CNV
-    │   ├── ADAPTIVE_00_amp_plot.pdf
-    │   ├── ADAPTIVE_00_cnv_plot.pdf
-    │   ├── ADAPTIVE_00_cnv_plot_segments.txt
-    │   ├── ADAPTIVE_00_gc.pdf
-    │   ├── ADAPTIVE_00_readlength.pdf
-    │   └── ADAPTIVE_00_readlength_summary.txt
-    ├── Mapping
-    │   ├── ADAPTIVE_00.bam
-    │   └── ADAPTIVE_00.bam.bai
-    ├── Methylation
-    │   └── ADAPTIVE_00.methylation_calls.tsv
-    ├── QC
-    │   ├── ADAPTIVE_00_offTarget.bed
-    │   ├── ADAPTIVE_00_qc_offtarget.tsv
-    │   ├── ADAPTIVE_00_qc_ontarget.tsv
-    │   ├── ADAPTIVE_00_run_qc_offtarget.tsv
-    │   └── ADAPTIVE_00_run_qc_ontarget.tsv
-    ├── SNV
-    │   ├── ADAPTIVE_00_annot.vcf
-    │   ├── ADAPTIVE_00.clair3.vcf.gz
-    │   ├── ADAPTIVE_00.clair3.vcf.gz.tbi
-    │   ├── ADAPTIVE_00.nanocaller.vcf.gz
-    │   ├── ADAPTIVE_00.nanocaller.vcf.gz.tbi
-    │   ├── ADAPTIVE_00.pepper.vcf.gz
-    │   ├── ADAPTIVE_00.pepper.vcf.gz.tbi
-    │   ├── ADAPTIVE_00.vcf.gz
-    │   └── ADAPTIVE_00.vcf.gz.tbi
-    └── SV
-        ├── ADAPTIVE_00.annotSV.tsv
-        ├── ADAPTIVE_00.merged.annotated.tsv
-        ├── ADAPTIVE_00.merged.vcf
-        ├── cuteSV
-        │   └── ADAPTIVE_00.cuteSV.vcf
-        ├── Nanovar
-        │   └── ADAPTIVE_00.nanovar.pass.vcf
-        ├── sniffles
-        │   └── ADAPTIVE_00.sniffles.vcf
-        └── SVIM
-            └── ADAPTIVE_00.svim.vcf
-
+cd existing_repo
+git remote add origin https://gitlab.curie.fr/kmerchad/nanoclid.git
+git branch -M main
+git push -uf origin main
 ```
 
+## Integrate with your tools
 
+- [ ] [Set up project integrations](https://gitlab.curie.fr/kmerchad/nanoclid/-/settings/integrations)
+
+## Collaborate with your team
+
+- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
+- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
+- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
+- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
+- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+
+## Test and Deploy
+
+Use the built-in continuous integration in GitLab.
+
+- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
+- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
+- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
+- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
+- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+
+***
+
+# Editing this README
+
+When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+
+## Suggestions for a good README
+Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+
+## Name
+Choose a self-explaining name for your project.
+
+## Description
+Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+
+## Badges
+On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+
+## Visuals
+Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+
+## Installation
+Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+
+## Usage
+Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+
+## Support
+Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+
+## Roadmap
+If you have ideas for releases in the future, it is a good idea to list them in the README.
+
+## Contributing
+State if you are open to contributions and what your requirements are for accepting them.
+
+For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+
+You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+
+## Authors and acknowledgment
+Show your appreciation to those who have contributed to the project.
+
+## License
+For open source projects, say how it is licensed.
+
+## Project status
+If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
