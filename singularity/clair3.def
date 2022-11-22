@@ -1,0 +1,10 @@
+Bootstrap: docker
+
+From: continuumio/miniconda3
+
+%files
+     GIT_DIR/clair3.tar.gz /clair3.tar.gz
+
+%post
+    tar xvzf clair3.tar.gz -C /opt/conda
+    rm clair3.tar.gz

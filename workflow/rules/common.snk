@@ -1,0 +1,82 @@
+RES_FOLDER = config["output_dir"]
+LOG_PATH=os.path.join(RES_FOLDER, config["run"], "logs/")
+
+rule samtools_index:
+    input:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam")
+    output:
+        index =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai")
+    log:
+        os.path.join(LOG_PATH, "index/samtoolsIndex_{injection}.log")
+    container:
+        config["containers_path"] + config["samtools_sort"]["sif"]
+    shell:
+        """samtools index {input.bam} {output.index} 2> {log}"""
+
+rule mosdepth:
+    input:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
+        index =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+        bed = config["bed"]
+    output:
+        summary = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OnTarget/{injection}_ontarget.mosdepth.summary.txt"),
+        regions = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OnTarget/{injection}_ontarget.regions.bed.gz")
+    params:
+        parameters = config["mosdepth"]["parameters"]
+    container:
+        config["containers_path"] + config["mosdepth"]["sif"]
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_ontarget_mosdepth.log")
+    shell:
+        """mosdepth {params.parameters} --by {input.bed} $(echo {output} | cut -d '.' -f 1) {input.bam} 2> {log}"""
+
+
+rule bedtoolsIntersect:
+    input:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
+        index =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+        bed = config["bed"]
+    output:
+        os.path.join(RES_FOLDER, config['run'], "{injection}/QC/COV/{injection}_ontarget.txt")
+    params:
+        parameters1 = config["bedtools"]["intersect1"],
+        parameters2 = config["bedtools"]["intersect2"]
+    container:
+        config["containers_path"] + config["bedtools"]["sif"]
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_ontarget_bedtoolsIntersect.log")
+    shell:
+        """
+        bedtools intersect {params.parameters1} -a {input.bed} -b {input.bam} > $(dirname {output})/ontarget.bed
+
+        bedtools intersect {params.parameters2} -a $(dirname {output})/ontarget.bed -b {input.bam} > {output}
+        """
+
+rule computeQC_ontarget:
+    input:
+        summary = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OnTarget/{injection}_ontarget.mosdepth.summary.txt"),
+        region = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OnTarget/{injection}_ontarget.regions.bed.gz"), 
+        bedtoolsIntersect = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/COV/{injection}_ontarget.txt")
+    output:
+        os.path.join(RES_FOLDER, config["run"], '{injection}/QC', "{injection}_qc_ontarget.tsv")
+    params:
+        script = os.path.join(config["git_dir"], 'utils', config["computeQC"]["script"]),
+        bed = config["bed"],
+        wildcard = lambda wildcards, output: os.path.basename(str(output)).split("_qc")[0]
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_computeQC_ontarget.log")
+    shell:
+        """python3 {params.script} qc -i {input.bedtoolsIntersect} -s {input.summary} -r {input.region} -w {params.wildcard} -O {output} -b {params.bed} 2> {log}"""
+
+rule concatQC:
+    input:
+        injections = expand(os.path.join(RES_FOLDER, config["run"], '{injection}/QC', "{injection}_qc_ontarget.tsv"), injection = config["samples"]),
+        run = os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_run_qc_ontarget.tsv")
+    output:
+        os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_qc_ontarget.tsv")
+    params:
+        script = os.path.join(config["git_dir"], 'utils', config["computeQC"]["script"])
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_concatQC_ontarget.log")
+    shell:
+        """python3 {params.script} concat -i {input.injections} -r {input.run} -O {output} 2> {log}"""

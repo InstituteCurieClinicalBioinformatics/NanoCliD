@@ -1,0 +1,132 @@
+import pandas as pd
+
+module common:
+    snakefile: f"{config['git_dir']}/workflow/rules/common.snk"
+    config: config
+
+rule createBedOffTarget:
+    input:
+        bed = config["bed"],
+        genomeFile = config["genomeFile"]
+    output:
+        os.path.join(RES_FOLDER, config['run'], 'All/QC', config['run'] + '_offTarget.bed')
+    log:
+        os.path.join(LOG_PATH, "qc/createBedOffTarget.log")
+    container:
+        config["containers_path"] + config["bedtools"]["sif"]
+    shell:
+        """bedtools complement -i {input.bed} -g {input.genomeFile} -L > {output} 2> {log}"""
+
+use rule mosdepth from common as mosdepth_offtarget with:
+    input:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
+        index =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+        bed = os.path.join(RES_FOLDER, config['run'], 'All/QC', config['run'] + '_offTarget.bed')
+    output:
+        summary = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OffTarget/{injection}_offtarget.mosdepth.summary.txt"),
+        regions = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OffTarget/{injection}_offtarget.regions.bed.gz")
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_offtarget_mosdepth.log")
+
+use rule mosdepth from common as mosdepth_ontarget_run with:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam"),
+        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai"),
+        bed = config["bed"]
+    output:
+        summary = os.path.join(RES_FOLDER, config['run'], 'All/QC/Mosdepth/OnTarget', config['run'] + "_run_ontarget.mosdepth.summary.txt"),
+        regions = os.path.join(RES_FOLDER, config['run'], 'All/QC/Mosdepth/OnTarget', config['run'] + "_run_ontarget.regions.bed.gz")
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_run_ontarget_mosdepth.log")
+
+use rule mosdepth from common as mosdepth_offtarget_run with:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam"),
+        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai"),
+        bed = os.path.join(RES_FOLDER, config['run'], 'All/QC', config['run'] + '_offTarget.bed')
+    output:
+        summary = os.path.join(RES_FOLDER, config['run'], 'All/QC/Mosdepth/OffTarget', config['run'] + "_run_offtarget.mosdepth.summary.txt"),
+        regions = os.path.join(RES_FOLDER, config['run'], 'All/QC/Mosdepth/OffTarget', config['run'] + "_run_offtarget.regions.bed.gz")
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_run_offtarget_mosdepth.log")
+
+use rule bedtoolsIntersect from common as bedtoolsIntersect_offtarget with:
+    input:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
+        index =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+        bed = os.path.join(RES_FOLDER, config['run'], 'All/QC', config['run'] + '_offTarget.bed')
+    output:
+        os.path.join(RES_FOLDER, config['run'], "{injection}/QC/COV/{injection}_offtarget.txt")
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_offtarget_bedtoolsIntersect.log")
+
+use rule bedtoolsIntersect from common as bedtoolsIntersect_run_ontarget with:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam"),
+        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai"),
+        bed = config["bed"]
+    output:
+        os.path.join(RES_FOLDER, config['run'], "All/QC/COV", config["run"] + "_run_ontarget.txt")
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_run_ontarget_bedtoolsIntersect.log")
+
+use rule bedtoolsIntersect from common as bedtoolsIntersect_run_offtarget with:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam"),
+        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai"),
+        bed = os.path.join(RES_FOLDER, config['run'], 'All/QC', config['run'] + '_offTarget.bed')
+    output:
+        os.path.join(RES_FOLDER, config['run'], "All/QC/COV", config["run"] + "_run_offtarget.txt")
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_run_offtarget_bedtoolsIntersect.log")
+
+use rule computeQC_ontarget from common as computeQC_offtarget with:
+    input:
+        summary = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OffTarget/{injection}_offtarget.mosdepth.summary.txt"),
+        region = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/Mosdepth/OffTarget/{injection}_offtarget.regions.bed.gz"), 
+        bedtoolsIntersect = os.path.join(RES_FOLDER, config['run'], "{injection}/QC/COV/{injection}_offtarget.txt")
+    output:
+        os.path.join(RES_FOLDER, config["run"], '{injection}/QC', "{injection}_qc_offtarget.tsv")
+    params:
+        script = os.path.join(config["git_dir"], 'utils', config["computeQC"]["script"]),
+        bed = config["bed"],
+        wildcard = lambda wildcards, output: os.path.basename(str(output)).split("_qc")[0]
+    log:
+        os.path.join(LOG_PATH, "qc", "{injection}_computeQC_offtarget.log")
+
+use rule computeQC_ontarget from common as computeQC_run_ontarget with:
+    input:
+        summary = os.path.join(RES_FOLDER, config['run'], "All/QC/Mosdepth/OnTarget", config["run"] + "_run_ontarget.mosdepth.summary.txt"),
+        region = os.path.join(RES_FOLDER, config['run'],  "All/QC/Mosdepth/OnTarget", config["run"] + "_run_ontarget.regions.bed.gz"), 
+        bedtoolsIntersect = os.path.join(RES_FOLDER, config['run'], "All/QC/COV", config["run"] + "_run_ontarget.txt")
+    output:
+        os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_run_qc_ontarget.tsv")
+    params:
+        script = os.path.join(config["git_dir"], 'utils', config["computeQC"]["script"]),
+        bed = config["bed"],
+        wildcard = lambda wildcards, output: os.path.basename(str(output)).split("_run")[0]
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_computeQC_ontarget.log")
+
+use rule computeQC_ontarget from common as computeQC_run_offtarget with:
+    input:
+        summary = os.path.join(RES_FOLDER, config['run'], "All/QC/Mosdepth/OffTarget", config["run"] + "_run_offtarget.mosdepth.summary.txt"),
+        region = os.path.join(RES_FOLDER, config['run'],  "All/QC/Mosdepth/OffTarget", config["run"] + "_run_offtarget.regions.bed.gz"), 
+        bedtoolsIntersect = os.path.join(RES_FOLDER, config['run'], "All/QC/COV", config["run"] + "_run_offtarget.txt")
+    output:
+        os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_run_qc_offtarget.tsv")
+    params:
+        script = os.path.join(config["git_dir"], 'utils', config["computeQC"]["script"]),
+        bed = config["bed"],
+        wildcard = lambda wildcards, output: os.path.basename(str(output)).split("_run")[0]
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_computeQC_offtarget.log")
+
+use rule concatQC from common as concatQC_offtarget with:
+    input:
+        injections = expand(os.path.join(RES_FOLDER, config["run"], '{injection}/QC', "{injection}_qc_offtarget.tsv"), injection = config["samples"]),
+        run = os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_run_qc_offtarget.tsv")
+    output:
+        os.path.join(RES_FOLDER, config["run"], 'All/QC', config["run"] + "_qc_offtarget.tsv")
+    log:
+        os.path.join(LOG_PATH, "qc", config["run"] + "_concatQC_offtarget.log")

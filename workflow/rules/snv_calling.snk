@@ -1,0 +1,182 @@
+import subprocess
+
+def getChrom(bed):
+    return subprocess.check_output(f"cut -f 1 {bed} | sort -Vu", shell=True).decode("utf-8").rstrip().split("\n")
+
+regions = getChrom(config["bed"])
+
+rule pepper:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], "All", "Mapping", config["run"] + ".bam"),
+        index = os.path.join(RES_FOLDER, config['run'], "All", "Mapping", config["run"] + ".bam.bai")
+    output:
+        os.path.join(RES_FOLDER, config["run"], "All", "SNV", "Pepper", "{region}/{region}_done.txt")
+    params:
+        ref = config["genome"],
+        parameters = config["pepper"]["parameters"]
+    threads : config["pepper"]["threads"]
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", config["run"] + "_{region}_pepper.log")
+    container:
+        config["containers_path"]+ config["pepper"]["sif"]
+    shell:
+        """
+        run_pepper_margin_deepvariant call_variant \
+        --phased_output -b {input.bam} -f {params.ref} -o $(dirname {output}) -p {wildcards.region} -t {threads} {params.parameters} -r {wildcards.region} &&
+        echo $(dirname {output})/{wildcards.region}.phased.vcf.gz > {output} 2> {log} || \
+        if [ -f $(dirname {output})/{wildcards.region}.vcf.gz ]; then
+            echo $(dirname {output})/{wildcards.region}.vcf.gz > {output}
+        else
+            echo "" > {output}
+        fi
+        """
+
+rule concatVcfs:
+    input:
+        expand(os.path.join(RES_FOLDER, config["run"], "All", "SNV", "Pepper", "{region}/{region}_done.txt"), region = regions)
+    output:
+        vcf = os.path.join(RES_FOLDER, config["run"], "All", "SNV", config["run"] + ".pepper.vcf.gz"),
+        tabix = os.path.join(RES_FOLDER, config["run"], "All", "SNV", config["run"] + ".pepper.vcf.gz.tbi")
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", config["run"] + "_pepper.log")
+    container:
+        config["containers_path"]+ config["annotSV"]["sif"]
+    shell:
+        """
+        vcfs=$(cat {input} | sort -Vu | grep -v "^$")       
+        if [[ -z ${{vcfs}} ]]; then
+        zgrep "#" "$(dirname {input[0]})"/intermediate_files/PEPPER_VARIANT_FULL.vcf.gz > "$(dirname {input[0]})"/pepper.vcf 
+        else
+        bcftools concat ${{vcfs}} -o "$(dirname {input[0]})"/pepper.vcf
+        fi
+
+        bgzip "$(dirname {input[0]})"/pepper.vcf
+        mv "$(dirname {input[0]})"/pepper.vcf.gz {output.vcf}
+        tabix {output.vcf} 
+        rm -rf $(dirname $(dirname {input[0]})) 2> {log}
+        """
+
+
+rule nanoCaller:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
+        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai"),
+    output:
+        vcf = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz"),
+        tabix = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz.tbi")
+    params:
+        parameters = config["nanocaller"]["parameters"],
+        bed = config["bed"],
+        ref = config["genome"], 
+        dirname = os.path.join(RES_FOLDER, config['run'], "All/SNV/nanocaller_tmp")
+    threads: config["nanocaller"]["threads"]
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", "{run}_nanocaller.log")
+    container:
+        config["containers_path"]+ config["nanocaller"]["sif"]
+    shell:
+        """
+        NanoCaller --bam {input.bam} {params.parameters} --output {params.dirname} --ref {params.ref} --cpu {threads} --bed {params.bed} 2> {log} && \
+        mv {params.dirname}/ont.vcf.gz {output.vcf} && mv {params.dirname}/ont.vcf.gz.tbi {output.tabix} && \
+        rm -fr {params.dirname}
+        """
+
+rule clair3:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
+        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz")
+    params:
+        model_path = config["clair3"]["model_path"],
+        ref = config["genome"], 
+        bed = config["bed"],
+        dirname = lambda wildcards, output: os.path.join(os.path.dirname(str(output)), "clair3_tmp")
+    threads: config["clair3"]["threads"]
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", "{run}_clair3.log")
+    container:
+        config["containers_path"]+ config["clair3"]["sif"]
+    shell:
+        """
+        run_clair3.sh --bam_fn={input.bam}  \
+           --ref_fn={params.ref}  \
+           --threads={threads} \
+           --platform=ont \
+           --bed_fn={params.bed}  \
+           --model_path={params.model_path} \
+           --output={params.dirname} 2> {log} && \
+        mv {params.dirname}/merge_output.vcf.gz {output} && \
+        rm -fr {params.dirname}
+        """
+
+rule clair3_index:
+    input:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz.tbi")
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", "{run}_clair3_index.log")
+    container:
+        config["containers_path"]+ config["annotSV"]["sif"]
+    shell:
+        """tabix {input}"""
+
+rule combine:
+    input:
+        nanocaller = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz"),
+        nanocallerIndex = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz.tbi"),
+        pepper = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.pepper.vcf.gz"),
+        pepperIndex = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.pepper.vcf.gz.tbi"),
+        clair3 = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz"),
+        clair3Index = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz.tbi")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz")
+    params:
+        javaParameters = config["combineVariants"]["javaParameters"],
+        tmpDir = lambda wildcards, output: os.path.dirname(str(output)),
+        parameters = config["combineVariants"]["parameters"],
+        genome = config["genome"]
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", "{run}_combineVariants.log")
+    container:
+        config["containers_path"]+ config["combineVariants"]["sif"]
+    shell:
+        """
+        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/GenomeAnalysisTK.jar -T CombineVariants {params.parameters} -R {params.genome} \
+        -o {output} --variant:nanocaller {input.nanocaller} --variant:pepper {input.pepper} --variant:clair3 {input.clair3} 2> {log}
+        """
+
+rule combine_index:
+    input:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV", config['run'] + ".vcf.gz")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV", config['run'] + ".vcf.gz.tbi")
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", config['run'] + "_combine_index.log")
+    container:
+        config["containers_path"]+ config["annotSV"]["sif"]
+    shell:
+        """tabix {input}"""
+
+rule snpEff:
+    input:
+        vcf = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz"),
+        index = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz.tbi")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}_annot.vcf")
+    params:
+        javaParameters = config["combineVariants"]["javaParameters"],
+        tmpDir = lambda wildcards, output: os.path.dirname(str(output)),
+        parameters = config["snpEff"]["parameters"],
+        genome_version = config["genome_version"],
+        dataDir = config["snpEff"]["dataDir"]
+    log:
+        os.path.join(LOG_PATH, "calling/SNV", "{run}_snpEff.log")
+    container:
+        config["containers_path"]+ config["snpEff"]["sif"]
+    shell:
+        """
+        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/share/snpeff-4.3.1t-5/snpEff.jar eff {params.parameters} -dataDir {params.dataDir} \
+        {params.genome_version} {input.vcf} > {output} 2> {log}
+        """

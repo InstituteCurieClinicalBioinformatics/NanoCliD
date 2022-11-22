@@ -1,0 +1,139 @@
+from utils.utils import *
+
+def getSummaryFile(wildcards):
+    return config["summaryFiles"][wildcards.injection]
+
+def getReportFile(wildcards):
+    return config["reportFiles"][wildcards.injection]
+
+def getFast5Dir(wildcards):
+    return config["fast5Dir"][wildcards.injection]
+
+include: f"{config['git_dir']}/workflow/rules/common.snk"
+
+module common:
+    snakefile: f"{config['git_dir']}/workflow/rules/common.snk"
+    config: config
+
+rule guppy:
+    input:
+        os.path.join(config["input_dir"], config["run"], "{injection}")
+    output:
+        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+    params:
+        runner = config["guppy"]["runner"],
+        parameters = config["guppy"]["parameters"]
+    log:
+        os.path.join(LOG_PATH, "baseCalling/guppy_{injection}.log")
+    threads: 1
+    shell:
+        """{params.runner} {params.parameters} --input_path {input} --save_path $(dirname {output.fastq}) 2> {log} &&
+        find $(dirname {output.fastq})/pass/ -type f -name '*.fastq.gz' -exec cat {{}} > {output.fastq} \; 2> {log}
+        """
+
+rule minimap2:
+    input:
+        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+    output:
+        sam =  temp(os.path.join(RES_FOLDER, config['run'], "{injection}/{injection}.sam"))
+    params:
+        report = getReportFile,
+        mmi = config["minimap2"]["mmi"],
+        parameters = config["minimap2"]["parameters"],
+        cn = config["minimap2"]["cn"]
+    log:
+        os.path.join(LOG_PATH, "mapping/minimap2_{injection}.log")
+    container:
+        config["containers_path"] + config["minimap2"]["sif"]
+    shell:
+        """if [[ -f {params.report} ]];
+            then
+                RUN=$(grep "\"protocol_group_id\"" {params.report} | sed 's/"protocol_group_id\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1')
+                GUPPYVERSION=$(grep "\"guppy_version\"" {params.report} |  sed 's/\"guppy_version\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1')
+                SAMPLEID=$(grep "\"sample_id\"" {params.report} |  sed 's/\"sample_id\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1') 
+                FLOWCELLID=$(grep "\"flow_cell_id\"" {params.report} |  sed 's/\"flow_cell_id\": \"\(.*\)"/\\1/' |  tr -d ","  | awk '{{$1=$1}};1')
+                RG="@RG\\tID:${{RUN}}\\tCN:{params.cn}\\tSM:${{SAMPLEID}}\\tPL:ONT\\tPU:${{FLOWCELLID}}\\tPM:guppy ${{GUPPYVERSION}}"
+            else
+                RG="@RG\\tID:{wildcards.injection}\\tCN:{params.cn}\\tSM:Unknown(no_report_file)\\tPL:ONT\\tPU:Unknown(no_report_file)\\tPM:Unknown(no_report_file)"
+            fi &&
+            minimap2 {params.parameters} -R "$RG" {params.mmi} {input.fastq} > {output.sam} 2> {log}"""
+
+rule samtools:
+    input:
+        sam =  os.path.join(RES_FOLDER, config['run'], "{injection}/{injection}.sam")
+    output:
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam")
+    params:
+        parameters = config["samtools_sort"]["parameters"]
+    log:
+        os.path.join(LOG_PATH, "mapping/sam2bam_{injection}.log")
+    container:
+        config["containers_path"] + config["samtools_sort"]["sif"]
+    shell:
+        """samtools sort {params.parameters} {input.sam} -o {output.bam} 2> {log}"""
+
+rule mergeBam:
+    input:
+        bams = expand(os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"), injection = config["samples"])
+    output:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam")
+    params:
+        parameters = config["samtools_merge"]["parameters"]
+    log:
+        os.path.join(LOG_PATH, f"merge/mergeBam_{config['run']}.log")
+    container:
+        config["containers_path"] + config["samtools_sort"]["sif"]
+    shell:
+        """samtools merge {params.parameters} -f {output.bam} {input.bams} 2> {log}"""
+
+use rule samtools_index from common as samtools_merge_index with:
+    input:
+        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam")
+    output:
+        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai")
+    log:
+        os.path.join(LOG_PATH, "index", "samtoolsIndex_" + config['run'] + ".log")
+
+rule nanopolish_index:
+    input:
+        fast5_dir = getFast5Dir,
+        sequencing_summary = getSummaryFile,
+        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+    output:
+        os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt")
+    log:
+        os.path.join(LOG_PATH, "methylationCalling/nanopolish_index_{injection}.log")
+    container:
+        config["containers_path"] + config["nanopolish"]["sif"]
+    shell:
+        """nanopolish index -d {input.fast5_dir} -s {input.sequencing_summary} {input.fastq} 2> {log} && touch {output}"""
+
+rule nanopolish_call_methylation:
+    input:
+        index = os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt"),
+        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz"),
+        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
+        bai =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+    output:
+        os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.methylation_calls.tsv")
+    params:
+        parameters = config["nanopolish_call_methylation"]["parameters"],
+        genome = config["genome"]
+    log:
+        os.path.join(LOG_PATH, "methylationCalling/call_methylation_{injection}.log")
+    container:
+        config["containers_path"] + config["nanopolish"]["sif"]
+    shell:
+        """nanopolish call-methylation -r {input.fastq} -b {input.bam} -g {params.genome} {params.parameters} > {output} 2> {log}"""
+
+rule mergeMethylation:
+    input:
+        methylations = expand(os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.methylation_calls.tsv"), injection = config["samples"])
+    output:
+        methylation = os.path.join(RES_FOLDER, config['run'], 'All/Methylation', config["run"] + ".methylation_calls.tsv")
+    log:
+        os.path.join(LOG_PATH, f"merge/mergeMethylation_{config['run']}.log")
+    container:
+        config["containers_path"] + config["nanopolish"]["sif"]
+    shell:
+        """calculate_methylation_frequency.py {input.methylations} > {output.methylation} 2> {log}"""

@@ -1,0 +1,5 @@
+bootstrap: docker
+from: brentp/mosdepth:v0.3.3
+
+%runscript
+umask 007 && "$@"

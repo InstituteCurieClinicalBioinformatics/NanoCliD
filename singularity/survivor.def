@@ -1,0 +1,5 @@
+bootstrap: docker
+from: quay.io/biocontainers/survivor:1.0.7--h9a82719_1
+
+%runscript
+umask 007 && "$@"

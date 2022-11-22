@@ -1,0 +1,23 @@
+bootstrap: docker
+from: python:3
+
+%post
+    ##### System #####
+	apt update -y
+	apt upgrade -y
+	apt install -y  wget
+
+    ##### bcftools #####
+    wget https://github.com/samtools/bcftools/releases/download/1.15.1/bcftools-1.15.1.tar.bz2 
+    tar -xf bcftools-1.15.1.tar.bz2
+    cd bcftools-1.15.1   
+    ./configure --prefix=/opt/
+    make
+    make install
+
+    ##### svim #####
+	pip install svim==2.0.0
+
+
+%environment
+	export PATH=/opt/bin/:$PATH

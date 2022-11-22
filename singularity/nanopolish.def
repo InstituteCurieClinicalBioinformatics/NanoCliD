@@ -1,0 +1,15 @@
+bootstrap: docker
+from: ubuntu:latest
+
+%post
+   apt-get update -qq
+   apt-get install -y git python3-pip gcc g++ make wget libbz2-ocaml-dev zlib1g-dev
+   git clone --recursive https://github.com/jts/nanopolish.git
+   cd nanopolish
+   make
+   pip3 install -r scripts/requirements.txt
+   cp scripts/*.py /usr/local/bin/
+   cp nanopolish /usr/local/bin/
+   
+%runscript
+   umask 007 && "$@"

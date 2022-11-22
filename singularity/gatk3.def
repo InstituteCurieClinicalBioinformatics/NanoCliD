@@ -1,0 +1,5 @@
+bootstrap: docker
+from: broadinstitute/gatk3:3.8-1
+
+%runscript
+	umask 007 &&  "$@"

@@ -1,0 +1,5 @@
+bootstrap: docker
+from: quay.io/biocontainers/bedtools:2.30.0--hc088bd4_0
+
+%runscript
+umask 007 && "$@"

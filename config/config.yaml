@@ -1,0 +1,123 @@
+bed: ""
+run: ""
+type: ""
+genome_version: ""
+genome: ""
+input_dir: ""
+output_dir: ""
+genomeFile: ""
+containers_path: ""
+
+guppy:
+  parameters_cpu: "--chunks_per_runner 512 -q 0 --min_qscore 7 -c dna_r9.4.1_450bps_hac.cfg --compress_fastq --recursive"
+  parameters_gpu: "--device 'cuda:all' --chunk_size 2500 --chunks_per_runner 512 --gpu_runners_per_device 128 --num_callers 8 -q 0 --min_qscore 7 -c dna_r9.4.1_450bps_hac.cfg --compress_fastq --disable_pings --recursive --port 5555"
+  runner_cpu: "guppy_basecaller"
+  runner_gpu: "guppy_basecall_client"
+
+minimap2:
+  mmi: ""
+  parameters: "-ax map-ont --MD"
+  sif: "minimap2.sif"
+  cn: "Institut_Curie"
+
+samtools_sort:
+  parameters: "-@ 8 -O BAM"
+  sif: "samtools.sif"
+
+samtools_ontarget:
+  parameters: "-bh -@ 8"
+
+nanopolish:
+  sif: "nanopolish.sif"
+
+nanopolish_call_methylation:
+  parameters: "-q cpg -t 8 -v --progress -K 2048"
+
+samtools_merge:
+  parameters: "-@ 8 -O BAM"
+
+samtools_stats:
+  parameters: "-S RG"
+
+mosdepth:
+  sif: "mosdepth.sif"
+  parameters: "--no-per-base -t 6"
+
+bedtools:
+  sif: "bedtools.sif"
+  intersect1: "-F 1.0"
+  intersect2: "-F 1.0 -C"
+
+computeQC:
+  script: "qc.py"
+  ontarget: "ontarget"
+  offtarget: "offtarget"
+
+cuteSV:
+  sif: "cuteSV.sif"
+  parameters: " --min_support 2 --min_size 50 --max_cluster_bias_INS 100 --diff_ratio_merging_INS 0.3 --max_cluster_bias_DEL 100 --diff_ratio_merging_DEL 0.3 --report_readid"
+  threads: 24
+
+nanovar:
+  sif: "nanovar.sif"
+  parameters: "--data_type ont --minlen 50"
+  threads: 8 
+
+sniffles:
+  sif: "sniffles.sif"
+  parameters: "--minsupport 2 --minsvlen 50 --output-rnames --phase --non-germline"
+
+svim:
+  sif: "svim.sif"
+  parameters: "--min_sv_size 50 --skip_genotyping "
+  qual: 5
+
+survivor:
+  sif: "survivor.sif"
+  parameters: "500 1 1 0 0 50"
+
+annotSV:
+  sif: "annotSV.sif"
+  parameters: "-annotationMode split -hpo 'HP:0002664'"
+
+clair3:
+  sif: "clair3.sif"
+  model_path: "/opt/conda/bin/models/ont_guppy5" 
+  threads: 8
+
+nanocaller:
+  sif: "nanoCaller.sif"
+  parameters: "--prefix ont"
+  threads: 8
+
+pepper:
+  sif: "pepper.sif"
+  parameters : "--ont_r9_guppy5_sup"
+  threads : 12
+
+combineVariants:
+  javaParameters: "-Xmx8G"
+  parameters: "--assumeIdenticalSamples --genotypemergeoption PRIORITIZE -priority pepper,nanocaller,clair3"
+  sif: "gatk3.sif"
+
+snpEff:
+  javaParameters: "-Xmx8G"
+  parameters: ""
+  sif: "snpEff.sif"
+
+circos:
+  script: "circos.py"
+
+cnv:
+  deeptoolssif: "deeptools.sif"
+  bigwigsif: "bigwig.sif"
+  script: "cnv_gc.R"
+  threads: 8
+  effectiveGenomeSize: 2864785220 
+  binSize: 1000
+  brain_bed_5mb: "brain_genes_flanking_5Mb_hg19.bed"
+  brain_bed: "brain_genes_hg19.bed"
+  genome_subsampling: "hg19_subsampling.fa"
+
+R:
+  sif: "R.sif"

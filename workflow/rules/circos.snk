@@ -1,0 +1,23 @@
+rule circos:
+    input:
+        os.path.join(RES_FOLDER, config['run'] + "/All/SV/" + config['run'] + ".merged.annotated.tsv")
+    output:
+        os.path.join(RES_FOLDER, config['run'] + "/All/Circos/circos.txt")
+    params:
+        geneList = config["circos"]["geneList"],
+        gtf = config["circos"]["gtf"],
+        cytobande = config["circos"]["cytobande"],
+        chromosome = config["circos"]["chromosome"],
+        script = os.path.join(config["git_dir"], 'utils', config["circos"]["script"]),
+        run = config["run"]
+    log:
+        os.path.join(LOG_PATH, "circos", config["run"] + "_circos.log")
+    shell:
+        """
+        if [ $(wc -l {params.geneList} | cut -d ' ' -f 1) != 0 ]; then
+            python3 {params.script} -b {params.cytobande} -c {params.chromosome} -g {params.geneList} -i {input} -O $(dirname {output}) \
+            -r {params.run} -G {params.gtf} 2> {log} && touch {output}
+        else
+            touch {output}
+        fi
+        """

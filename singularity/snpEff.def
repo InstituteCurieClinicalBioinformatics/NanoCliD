@@ -1,0 +1,5 @@
+bootstrap: docker
+from: quay.io/biocontainers/snpeff:4.3.1t--hdfd78af_5 
+
+%runscript
+umask 007 && "$@"

@@ -1,0 +1,6 @@
+bootstrap: docker
+from: quay.io/biocontainers/ucsc-bigwigaverageoverbed:377--ha8a8165_3
+
+%runscript
+umask 007 && "$@"
+
