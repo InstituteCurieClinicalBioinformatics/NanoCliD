@@ -39,7 +39,7 @@ If you downloaded manually the archives, please launch the following command to 
 ```python3
 python3 nanoclid.py install -d ${DOWNLOAD_DIR}
 ```
-Where DOWNLOAD_DIR is the folder containing the three archives which must be different from the git folder.
+Where DOWNLOAD_DIR is the folder containing the archives which must be different from the git folder.
 
 Once the installation succeed, you can run the test part to check if NanoCliD is correctly installed. First source activate in venv and run :
 
