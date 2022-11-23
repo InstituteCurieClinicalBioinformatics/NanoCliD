@@ -9,7 +9,7 @@ class NanoClid:
     _SINGULARITY_TAR_PART2 = "1-ZkxulbbVv54y__Zz6y-Xahh-YwftPUm"
     _ANNOTATIONS_TAR = "1RQa5QHgMDmcFR-IRSKwbUiMn_QMMoYKc"
     _INPUT_TAR = "1LpguQ1aUFQPGcnh4iow73rExaHT-E96_"
-    _EXPECTED_TAR = "1jlhEFfwfjEA9c4MwstN8vhKhS_kfu9Z3"
+    _EXPECTED_TAR = "1hkn4YxjmID30Rqil58XjdiEUzm_1RTLq"
     _CMD_DOWNLOAD = """wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=FILEID' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=FILEID" -O FILENAME && rm -rf /tmp/cookies.txt"""
 
     def __init__(self, inputFolder=None, run=None, outDir=None, bed=None, dryRun=None, genomeVersion=None, gtf=None, geneList=None, snakemakeParameters=None, cores=None, bind=None, refDir=None, samples="", configTemplate=None, outTemplate=None, gitDir=None, containersPath=None, snpEffDir=None, cpu=None):
@@ -125,18 +125,18 @@ class NanoClid:
                 raise ValueError(f"{os.path.join(gitDir, 'annotations', annotation)} is missing\nDownload must do not have ended properly.")
         
         if files:
-            files = open(os.path.join(gitDir, "input.template"), "r").readlines()
-            files = [f.replace("INPUT", os.path.join(gitDir, "data/input"))]
+            files = open(os.path.join(gitDir, "data/input.template"), "r").readlines()
+            files = [f.replace("INPUT", os.path.join(gitDir, "data/input")) for f in files]
             for f in files:
-                if not os.path.exists(f):
+                if not os.path.isfile(f.rstrip()):
                     raise ValueError(f"{f} is missing\nDownload for input files must do not have ended properly.")
             
-            files = open(os.path.join(gitDir, "check.template"), "r").readlines()
-            filesCPU = [f.replace("INPUT", os.path.join(gitDir, "data/expected/cpu"))]
-            filesGPU = [f.replace("INPUT", os.path.join(gitDir, "data/expected/gpu"))]
+            files = open(os.path.join(gitDir, "data/check.template"), "r").readlines()
+            filesCPU = [f.replace("FOLDER", os.path.join(gitDir, "data/expected/cpu")) for f in files]
+            filesGPU = [f.replace("FOLDER", os.path.join(gitDir, "data/expected/gpu")) for f in files]
             files = filesCPU + filesGPU
             for f in files:
-                if not os.path.exists(f):
+                if not os.path.isfile(f.rstrip()):
                     raise ValueError(f"{f} is missing\nDownload for expected files must do not have ended properly.")
 
     def runSnakemake(self, snakefile, configFile, arguments, bind, cores, dryRun):
@@ -166,31 +166,34 @@ class NanoClid:
         return summaryFilesPath
 
     def _install(self, folder):
-        downloadDir = "/tmp/"
-        if folder:
-            downloadDir = folder
-        print("Installation is running ...")
         gitDir = os.path.dirname(os.path.realpath(__file__))
         singularityDir = os.path.join(gitDir, 'singularity')
         defFiles = glob.glob(f"{singularityDir}/*.def")
         defFiles = sorted(defFiles)
-        print("Downloading images and annotations ...")
-        subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._SINGULARITY_TAR_PART1).replace("FILENAME", f"{folder}/singularity1.tar.gz"), shell = True)
-        subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._SINGULARITY_TAR_PART2).replace("FILENAME", f"{folder}/singularity2.tar.gz"), shell = True)
-        subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._ANNOTATIONS_TAR).replace("FILENAME", f"{folder}/annotations.tar.gz"), shell = True)
-        subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._INPUT_TAR).replace("FILENAME", f"{folder}/input.tar.gz"), shell = True)
-        subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._EXPECTED_TAR).replace("FILENAME", f"{folder}/expected.tar.gz"), shell = True)
-        subprocess.call(f"tar -xvf {folder}/singularity1.tar.gz -C {folder}/singularity1/", shell=True)
-        subprocess.call(f"tar -xvf {folder}/singularity2.tar.gz -C {folder}/singularity1/", shell=True)
-        subprocess.call(f"tar -xvf {folder}/annotations.tar.gz -C {folder}/annotations/", shell=True)
-        subprocess.call(f"tar -xvf {folder}/input.tar.gz -C {os.path.join(gitDir, 'data')}/", shell=True)
-        subprocess.call(f"tar -xvf {folder}/expected.tar.gz -C {os.path.join(gitDir, 'data')}/", shell=True)
-        subprocess.call(f"cp {folder}/singularity*/*sif {os.path.join(gitDir, 'singularity')}/ && rm -rf {folder}/singularity*.tar.gz && rm -rf {folder}/singularity*/", shell = True)
-        subprocess.call(f"cp {folder}/annotations/* {os.path.join(gitDir, 'annotations')}/ && rm -rf {folder}/annotations.tar.gz && rm -rf {folder}/annotations/", shell = True)
-        subprocess.call(f"rm -rf {folder}/input.tar.gz", shell = True)
-        subprocess.call(f"rm -rf {folder}/expected.tar.gz", shell = True)
+        downloadDir = "/tmp/"
+        if not folder:
+            print("Downloading archives ...")
+            subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._SINGULARITY_TAR_PART1).replace("FILENAME", f"{downloadDir}/singularity1.tar.gz"), shell = True)
+            subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._SINGULARITY_TAR_PART2).replace("FILENAME", f"{downloadDir}/singularity2.tar.gz"), shell = True)
+            subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._ANNOTATIONS_TAR).replace("FILENAME", f"{downloadDir}/annotations.tar.gz"), shell = True)
+            subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._INPUT_TAR).replace("FILENAME", f"{downloadDir}/input.tar.gz"), shell = True)
+            subprocess.call(NanoClid._CMD_DOWNLOAD.replace("FILEID", NanoClid._EXPECTED_TAR).replace("FILENAME", f"{downloadDir}/expected.tar.gz"), shell = True)
+        else:
+            downloadDir = folder
+        print("Installation is running ...")
+        subprocess.call(f"tar -xvf {downloadDir}/singularity1.tar.gz -C {downloadDir}", shell=True)
+        subprocess.call(f"tar -xvf {downloadDir}/singularity2.tar.gz -C {downloadDir}", shell=True)
+        subprocess.call(f"tar -xvf {downloadDir}/annotations.tar.gz -C {downloadDir}", shell=True)
+        subprocess.call(f"tar -xvf {downloadDir}/input.tar.gz -C {os.path.join(gitDir, 'data')}/", shell=True)
+        subprocess.call(f"tar -xvf {downloadDir}/expected.tar.gz -C {os.path.join(gitDir, 'data')}/", shell=True)
+        subprocess.call(f"cp {downloadDir}/singularity*/*sif {os.path.join(gitDir, 'singularity')}/", shell = True)
+        subprocess.call(f"cp {downloadDir}/annotations/* {os.path.join(gitDir, 'annotations')}/", shell = True)
         self.__checkDownloads(gitDir)
-        print("Downloading images and annotations OK")
+        subprocess.call(f"rm -rf {downloadDir}/singularity*.tar.gz && rm -rf {downloadDir}/singularity*/", shell = True)
+        subprocess.call(f"rm -rf {downloadDir}/annotations.tar.gz && rm -rf {downloadDir}/annotations/", shell = True)
+        subprocess.call(f"rm -rf {downloadDir}/input.tar.gz", shell = True)
+        subprocess.call(f"rm -rf {downloadDir}/expected.tar.gz", shell = True)
+        print("Downloading archives OK")
         print("Setting python virtualenv ...")
         code1 = subprocess.call(f"pip3 install virtualenv", shell=True)
         code2 = subprocess.call(f"mkdir -p {gitDir}/venv && python3 -m venv {gitDir}/venv", shell=True)
