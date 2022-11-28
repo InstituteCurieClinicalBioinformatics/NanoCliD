@@ -241,6 +241,7 @@ class NanoClid:
 
 
     def _checkTest(self, checkTemplate, gitDir, cpu):
+        differences = []
         print("Checking test results ...")
         testDir = os.path.join(gitDir, 'data', 'output')
         if cpu:
@@ -274,8 +275,11 @@ class NanoClid:
             else:
                 diff = subprocess.check_output(f"diff {f.replace('FOLDER', testDir)} {f.replace('FOLDER', expectedDir)} -I '^#'", shell=True)
             if diff.decode("utf-8") != "":
-                print(f"Differences observed for {f}\nInstallation failed")
-                return
+                differences.append(f.replace('FOLDER', testDir))
+                print(f"Differences observed for {f}\n")
+        results = open(f"{gitDir}/data/differences.txt", "w")
+        results.write("\n".join(differences))
+        results.close()
         subprocess.call(f"rm {testDir}/test.fastq && rm {expectedDir}/expected.fastq", shell=True)
         print("Checking test results OK")
         print("Installation succeed\nNanoCliD is ready to use")
