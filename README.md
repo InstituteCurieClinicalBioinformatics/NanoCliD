@@ -24,17 +24,22 @@ However, due to high size of the archives and google politics, the download can 
 You can also manually download the archives at the following links :
 
 singularity images part1 : https://drive.google.com/file/d/1rnOcr8M_lH3KSu3dIKpi6C06cxSt3zMN/view?usp=share_link
+
 singularity images part2 : https://drive.google.com/file/d/1-ZkxulbbVv54y__Zz6y-Xahh-YwftPUm/view?usp=share_link
+
 annotations : https://drive.google.com/file/d/1RQa5QHgMDmcFR-IRSKwbUiMn_QMMoYKc/view?usp=share_link
+
 input test files : https://drive.google.com/file/d/1LpguQ1aUFQPGcnh4iow73rExaHT-E96_/view?usp=share_link
-expected test files : https://drive.google.com/file/d/1jlhEFfwfjEA9c4MwstN8vhKhS_kfu9Z3/view?usp=share_link
+
+expected test files : https://drive.google.com/file/d/1hkn4YxjmID30Rqil58XjdiEUzm_1RTLq/view?usp=share_link
+
 
 If you downloaded manually the archives, please launch the following command to install :
 
 ```python3
 python3 nanoclid.py install -d ${DOWNLOAD_DIR}
 ```
-Where DOWNLOAD_DIR is the folder containing the three archives which must be different from the git folder.
+Where DOWNLOAD_DIR is the folder containing the archives which must be different from the git folder.
 
 Once the installation succeed, you can run the test part to check if NanoCliD is correctly installed. First source activate in venv and run :
 
