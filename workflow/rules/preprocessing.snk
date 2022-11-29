@@ -19,7 +19,7 @@ rule guppy:
     input:
         os.path.join(config["input_dir"], config["run"], "{injection}")
     output:
-        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
     params:
         runner = config["guppy"]["runner"],
         parameters = config["guppy"]["parameters"]
@@ -33,7 +33,7 @@ rule guppy:
 
 rule minimap2:
     input:
-        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
     output:
         sam =  temp(os.path.join(RES_FOLDER, config['run'], "{injection}/{injection}.sam"))
     params:
