@@ -339,6 +339,4 @@ if __name__ == "__main__":
         NanoClid()._runTest(args.cpu)  
     
     if args.command == "run":
-        if args.cpu:
-            raise ValueError("You can't run the pipeline with a CPU.")
         NanoClid(args.inputFolder, args.run, args.outDir, args.bed, args.dryRun, args.genomeVersion, args.gtf, args.geneList, args.snakemakeParameters, args.cores, args.bind, args.refDir, args.samples, args.configTemplate, args.outputTemplate, args.gitDir, args.containersPath, args.snpEffDir, args.cpu)._runNanoClid()
