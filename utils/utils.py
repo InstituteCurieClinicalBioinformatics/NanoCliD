@@ -20,12 +20,15 @@ def getSamplesDir(run):
             samples.append(folder)
     return samples
 
-def getOutputs(template, RES_FOLDER, samples, run_id):
+def getOutputs(template, RES_FOLDER, samples, run_id, INPUT_FOLDER):
     outputs = []
     with open(template, "r") as f:
         for line in f:
             if "{injection}" in line.rstrip() or "{run}" in line.rstrip():
-                outputs.append(expand(os.path.join(RES_FOLDER, run_id, line.rstrip()), injection = samples, run = run_id))
+                if "fastq.gz" in line.rstrip():
+                    outputs.append(expand(os.path.join(INPUT_FOLDER, run_id, line.rstrip()), injection = samples, run = run_id))
+                else:
+                    outputs.append(expand(os.path.join(RES_FOLDER, run_id, line.rstrip()), injection = samples, run = run_id))
             else:
                 outputs.append(os.path.join(RES_FOLDER, run_id, line.rstrip()))
     return outputs

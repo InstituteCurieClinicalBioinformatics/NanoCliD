@@ -20,4 +20,4 @@ include: f"{config['git_dir']}/workflow/rules/circos.snk"
 # target rules
 rule all:
     input:
-        getOutputs(config["analysis"], RES_FOLDER, config["samples"], config["run"])
+        getOutputs(config["analysis"], RES_FOLDER, config["samples"], config["run"], config["input_dir"])
