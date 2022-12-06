@@ -6,7 +6,7 @@ NanoCliD uses Snakemake and python.
 # Prerequisites
 
 To run NanoCliD you'll need :
-  - python > 3.7 and pip3 
+  - python > 3.7 and pip3
   - python3-venv
   - singularity
   - [guppy](https://community.nanoporetech.com/downloads)
@@ -51,7 +51,10 @@ python3 nanoclid.py test
 /!\ : if you do not have a GPU, you can run the test using CPU with the --cpu option.
 However, we want to remind you that adaptive sampling needs a GPU. You will be able to run the test part with a CPU but not the run part.
 
-If the comparison between run test outputs and expected outputs reports no differences, the installation is completed. 
+The CPU expected results have been obtained using guppy 6.3.8+d9e0f64.
+The GPU expected results have been obtained using guppy 5.0.17+99baa5b27.
+The comparison between test run outputs and expected outputs could report differences if your guppy version differs from the reported ones.
+If the test runs without error, the installation is completed.
 You can now use NanoCliD.
 
 # Run NanoCliD
@@ -66,8 +69,8 @@ RUN
                       |report.md
                       |sequencing_summary.txt
                       |----fast5
-                      
-# for the small input test dataset                      
+
+# for the small input test dataset
 ADAPTIVE_00
 ├── ADAPTIVE_00_1
 │   └── subdir1

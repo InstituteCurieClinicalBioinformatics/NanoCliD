@@ -118,19 +118,19 @@ class NanoClid:
         sifFiles = [os.path.basename(sifFile).split(".")[0] for sifFile in sifFiles]
         if sorted(defFiles) != sorted(sifFiles):
             raise ValueError(f"Image for {set(defFiles).difference(sifFiles)} is missing.\nDownload must do not have ended properly.")
-        
+
         annotations = ["hg19.dict", "hg19.fasta", "hg19.fasta.fai", "hg19.mmi", "hg19.genome", "hg19_subsampling.fa"]
         for annotation in annotations:
             if not os.path.isfile(os.path.join(gitDir, "annotations", annotation)):
                 raise ValueError(f"{os.path.join(gitDir, 'annotations', annotation)} is missing\nDownload must do not have ended properly.")
-        
+
         if files:
             files = open(os.path.join(gitDir, "data/input.template"), "r").readlines()
             files = [f.replace("INPUT", os.path.join(gitDir, "data/input")) for f in files]
             for f in files:
                 if not os.path.isfile(f.rstrip()):
                     raise ValueError(f"{f} is missing\nDownload for input files must do not have ended properly.")
-            
+
             files = open(os.path.join(gitDir, "data/check.template"), "r").readlines()
             filesCPU = [f.replace("FOLDER", os.path.join(gitDir, "data/expected/cpu")) for f in files]
             filesGPU = [f.replace("FOLDER", os.path.join(gitDir, "data/expected/gpu")) for f in files]
@@ -154,7 +154,7 @@ class NanoClid:
             return find
         else:
             return find[0]
-    
+
     def getSpecificPath(self, runDir, pattern, kind, samples):
         summaryFiles = self.getFiles(runDir, kind, pattern, files=True)
         summaryFilesPath = {}
@@ -230,7 +230,7 @@ class NanoClid:
                             return
                         else:
                             print("Retrieving gtf file OK")
-                
+
     def _runTest(self, cpu):
         print("Test is running ...")
         print("Checking if guppy_basecall_client is in PATH ...")
@@ -280,11 +280,14 @@ class NanoClid:
             if diff.decode("utf-8") != "":
                 differences.append(f.replace('FOLDER', testDir))
                 print(f"Differences observed for {f}\n")
-        results = open(f"{gitDir}/data/differences.txt", "w")
-        results.write("\n".join(differences))
-        results.close()
         subprocess.call(f"rm {testDir}/test.fastq && rm {expectedDir}/expected.fastq", shell=True)
         print("Checking test results OK")
+        if len(results) > 0:
+            print("Some differences have been observed for the following files :")
+            for difference in differences:
+                print(difference)
+            print("Please see the guppy version used for create the expected results on the README.")
+            print("Variation can be observed due to guppy version.")
         print("Installation succeed\nNanoCliD is ready to use")
 
     def _runNanoClid(self):
@@ -301,10 +304,10 @@ if __name__ == "__main__":
 	description="Launch NanoClid pipeline")
 
     subs = parser.add_subparsers(dest = "command")
-    
+
     install_parser = subs.add_parser("install", help='Install NanoClid images.')
     install_parser.add_argument("-d", "--dir", help = "Folder containing the archives. Please see the README.")
-    
+
     test_parser = subs.add_parser("test", help="Run unit test")
     test_parser.add_argument("--cpu", action = 'store_true', help = "Run test with a CPU")
 
@@ -336,7 +339,7 @@ if __name__ == "__main__":
         NanoClid()._install(args.dir)
 
     if args.command == "test":
-        NanoClid()._runTest(args.cpu)  
-    
+        NanoClid()._runTest(args.cpu)
+
     if args.command == "run":
         NanoClid(args.inputFolder, args.run, args.outDir, args.bed, args.dryRun, args.genomeVersion, args.gtf, args.geneList, args.snakemakeParameters, args.cores, args.bind, args.refDir, args.samples, args.configTemplate, args.outputTemplate, args.gitDir, args.containersPath, args.snpEffDir, args.cpu)._runNanoClid()
