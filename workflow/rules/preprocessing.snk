@@ -98,7 +98,7 @@ rule nanopolish_index:
     input:
         fast5_dir = getFast5Dir,
         sequencing_summary = getSummaryFile,
-        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
     output:
         os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt")
     log:
@@ -111,7 +111,7 @@ rule nanopolish_index:
 rule nanopolish_call_methylation:
     input:
         index = os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt"),
-        fastq =  os.path.join(RES_FOLDER, config['run'], "{injection}/FASTQ/{injection}.fastq.gz"),
+        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz"),
         bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
         bai =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
     output:
