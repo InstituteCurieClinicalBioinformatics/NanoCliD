@@ -240,10 +240,10 @@ class NanoClid:
         gitDir = os.path.dirname(os.path.realpath(__file__))
         nanoclid = NanoClid(os.path.join(gitDir, "data", "input"), "ADAPTIVE_00", os.path.join(gitDir, "data", "output"), os.path.join(gitDir, "data", "test.bed"), False, "hg19", os.path.join(gitDir,"annotations" ,"gencode.v40lift37.annotation.gtf"), os.path.join(gitDir, "data", "geneList.txt")  , self._SNAKEMAKE_MINION_PARAMETERS, 1, os.environ["HOME"], os.path.join(gitDir, "annotations"), "", os.path.join(gitDir, 'config/config.yaml'),os.path.join(gitDir, 'config/ADAPTIVE.template'), gitDir, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'singularity'), os.path.join(gitDir,"annotations" ,"data"), cpu)
         nanoclid._runNanoClid()
-        nanoclid._checkTest(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'check.template'), os.path.dirname(os.path.realpath(__file__)), cpu)
+        nanoclid._checkTest(os.path.join(gitDir, "data", "input"), os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'check.template'), os.path.dirname(os.path.realpath(__file__)), cpu)
 
 
-    def _checkTest(self, checkTemplate, gitDir, cpu):
+    def _checkTest(self, inputDir, checkTemplate, gitDir, cpu):
         differences = []
         print("Checking test results ...")
         testDir = os.path.join(gitDir, 'data', 'output')
@@ -256,7 +256,7 @@ class NanoClid:
         filesToCheck = [f.rstrip() for f in filesToCheck]
         for f in filesToCheck:
             if "fastq" in f:
-                subprocess.call(f"zcat {f.replace('FOLDER', testDir)} | sort -Vu > {testDir}/test.fastq", shell=True)
+                subprocess.call(f"zcat {f.replace('FOLDER', inputDir)} | sort -Vu > {testDir}/test.fastq", shell=True)
                 subprocess.call(f"zcat {f.replace('FOLDER', expectedDir)} | sort -Vu > {expectedDir}/expected.fastq", shell=True)
                 diff = subprocess.check_output(f"diff {testDir}/test.fastq {expectedDir}/expected.fastq", shell=True)
             elif f.split(".")[-1] == "bam":
