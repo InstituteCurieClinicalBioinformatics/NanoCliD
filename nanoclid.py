@@ -153,10 +153,16 @@ class NanoClid:
         elif files:
             return find
         else:
-            return find[0]
+            if pattern == "fast5*":
+                if len(find) > 1:
+                    return [folder for folder in find if "_pass" in folder]
+                return find[0]
 
     def getSpecificPath(self, runDir, pattern, kind, samples):
-        summaryFiles = self.getFiles(runDir, kind, pattern, files=True)
+        files = True
+        if pattern == "fast5*":
+            files = False
+        summaryFiles = self.getFiles(runDir, kind, pattern, files)
         summaryFilesPath = {}
         for sample in samples:
             for summaryFile in summaryFiles:

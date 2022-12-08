@@ -84,7 +84,15 @@ rule mergeBam:
     container:
         config["containers_path"] + config["samtools_sort"]["sif"]
     shell:
-        """samtools merge {params.parameters} -f {output.bam} {input.bams} 2> {log}"""
+        """
+        bams=({input.bams})
+        nbFiles=$(echo "${{#bams[@]}}")
+        if [ $nbFiles -ge 2 ]; then
+            samtools merge {params.parameters} -f {output.bam} {input.bams} 2> log
+        else
+            cp {input.bams[0]} {output.bam}
+        fi
+        """
 
 use rule samtools_index from common as samtools_merge_index with:
     input:
