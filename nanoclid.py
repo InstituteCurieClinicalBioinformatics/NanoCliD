@@ -151,25 +151,23 @@ class NanoClid:
             print(f"No files found in path {path} with pattern {pattern}")
             return ""
         elif files:
+            if pattern == "fast5*":
+                return [file for file in find if not "fail" in file]
             return find
         else:
-            if pattern == "fast5*":
-                if len(find) > 1:
-                    return [folder for folder in find if "_pass" in folder]
-                return find[0]
+            return find[0]
 
     def getSpecificPath(self, runDir, pattern, kind, samples):
-        files = True
-        if pattern == "fast5*":
-            files = False
-        summaryFiles = self.getFiles(runDir, kind, pattern, files)
+        summaryFiles = self.getFiles(runDir, kind, pattern, files=True)
         summaryFilesPath = {}
         for sample in samples:
             for summaryFile in summaryFiles:
                 if sample in summaryFile:
                     summaryFilesPath[sample] = summaryFile
                     break
+        self.samples = list(set(samples).intersection(set(summaryFilesPath.keys())))
         return summaryFilesPath
+
 
     def _install(self, folder):
         gitDir = os.path.dirname(os.path.realpath(__file__))
@@ -264,7 +262,7 @@ class NanoClid:
             if "fastq" in f:
                 subprocess.call(f"zcat {f.replace('FOLDER', inputDir)} | sort -Vu > {testDir}/test.fastq", shell=True)
                 subprocess.call(f"zcat {f.replace('FOLDER', expectedDir)} | sort -Vu > {expectedDir}/expected.fastq", shell=True)
-                diff = subprocess.check_output(f"diff {testDir}/test.fastq {expectedDir}/expected.fastq", shell=True)
+                diff = subprocess.call(f"diff {testDir}/test.fastq {expectedDir}/expected.fastq", shell=True)
             elif f.split(".")[-1] == "bam":
                 diff = subprocess.check_output(f"singularity exec {singularityDir}/bamUtil.sif bam diff --in1 {f.replace('FOLDER', testDir)} --in2 {f.replace('FOLDER', expectedDir)} --all", shell=True)
             elif "pdf" in f:
@@ -274,21 +272,22 @@ class NanoClid:
             elif os.path.splitext(f)[-1] == ".gz":
                 subprocess.call(f"zgrep -v '#' {f.replace('FOLDER', testDir)} > test.tmp", shell = True)
                 subprocess.call(f"zgrep -v '#' {f.replace('FOLDER', expectedDir)} > expected.tmp", shell = True)
-                diff = subprocess.check_output(f"diff test.tmp expected.tmp", shell=True)
+                diff = subprocess.call(f"diff test.tmp expected.tmp", shell=True)
                 subprocess.call("rm test.tmp expected.tmp", shell = True)
             elif os.path.splitext(f)[-1] == ".vcf":
                 subprocess.call(f"grep -v '#' {f.replace('FOLDER', testDir)} | cut -f 1,2,3,4,5 > test.tmp", shell = True)
                 subprocess.call(f"grep -v '#' {f.replace('FOLDER', expectedDir)} | cut -f 1,2,3,4,5 > expected.tmp", shell = True)
-                diff = subprocess.check_output("diff test.tmp expected.tmp", shell=True)
+                diff = subprocess.call("diff test.tmp expected.tmp", shell=True)
                 subprocess.call("rm test.tmp expected.tmp", shell = True)
             else:
-                diff = subprocess.check_output(f"diff {f.replace('FOLDER', testDir)} {f.replace('FOLDER', expectedDir)} -I '^#'", shell=True)
-            if diff.decode("utf-8") != "":
+                diff = subprocess.call(f"diff {f.replace('FOLDER', testDir)} {f.replace('FOLDER', expectedDir)} -I '^#'", shell=True)
+            if type(diff) == bytes and diff.decode("utf-8") != "":
                 differences.append(f.replace('FOLDER', testDir))
-                print(f"Differences observed for {f}\n")
+            if type(diff) == int and diff == 1:
+                differences.append(f.replace('FOLDER', testDir))
         subprocess.call(f"rm {testDir}/test.fastq && rm {expectedDir}/expected.fastq", shell=True)
         print("Checking test results OK")
-        if len(results) > 0:
+        if len(differences) > 0:
             print("Some differences have been observed for the following files :")
             for difference in differences:
                 print(difference)
