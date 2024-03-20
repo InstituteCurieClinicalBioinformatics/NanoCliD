@@ -1,0 +1,12 @@
+use-singularity: true
+singularity-args: '-B GIT_DIR/utils/,GIT_DIR/annotations/,REF_DIR,GIT_DIR/annotations/nanovar/:/mnt'
+singularity-prefix: "GIT_DIR/singularity/"
+restart-times: 3
+latency-wait: 60
+cores: 1
+keep-going: True
+verbose: True
+rerun-incomplete: True
+printshellcmds: True
+default-resources: [cpus=1, mem_gb=2, ram=1, time_min=60, tmpdir="/tmp"]
+resources: [cpus=12, ram=16]

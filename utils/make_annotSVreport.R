@@ -17,11 +17,7 @@ cols_to_keep <-
 		"SV_end",
 		"SV_length",
 		"SV_type",
-		"Nb_callers",
-		"Sniffles",
-		"cuteSV",
-		"SVIM",
-		"NanoVar",
+                "Caller",
 		"Annotation_mode",
 		"Gene_name",
 		"Gene_count",
@@ -64,12 +60,6 @@ cols_to_keep <-
 		"OMIM_morbid_candidate")
 
 annotSV <-read_tsv(input.path)
-
-annotSV$Nb_callers <-  substring(annotSV$INFO,6,6)
-annotSV$Sniffles <-  substring(annotSV$INFO,17,17)
-annotSV$cuteSV <- substring(annotSV$INFO,18,18)
-annotSV$SVIM <-  substring(annotSV$INFO,19,19)
-annotSV$NanoVar <-  substring(annotSV$INFO,20,20)
 
 annotSV.cleaned <- annotSV[,cols_to_keep]
 

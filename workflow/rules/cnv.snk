@@ -1,18 +1,18 @@
 rule bamCoverage:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
-        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
     output:
-        temp(os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.bw"))
+        temp(os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.bw"))
     params:
         eff_size = config["cnv"]["effectiveGenomeSize"],
         bin_size = config["cnv"]["binSize"],
         brain_bed_5mb = config["cnv"]["brain_bed_5mb"]
     threads: config["cnv"]["threads"]
     log:
-        os.path.join(LOG_PATH, "calling/CNV", "{run}_bamCoverage.log")
+        os.path.join(LOG_PATH, "calling/CNV", "{mergedSamples}_bamCoverage.log")
     container:
-        config["containers_path"]+ config["cnv"]["deeptoolssif"]
+        CONTAINERS_PATH + config["cnv"]["deeptoolssif"]
     shell:
         """
         bamCoverage --normalizeUsing RPGC \
@@ -25,15 +25,15 @@ rule bamCoverage:
 
 rule bam2bigwig:
     input:
-        os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.bw")
+        os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.bw")
     output:
-        temp(os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.tab"))
+        temp(os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.tab"))
     params:
         brain_bed_5mb = os.path.join(config["git_dir"], "annotations", config["cnv"]["brain_bed_5mb"])
     log:
-        os.path.join(LOG_PATH, "calling/CNV", "{run}_bam2bigwig.log")
+        os.path.join(LOG_PATH, "calling/CNV", "{mergedSamples}_bam2bigwig.log")
     container:
-        config["containers_path"]+ config["cnv"]["bigwigsif"]
+        CONTAINERS_PATH + config["cnv"]["bigwigsif"]
     shell:
         """
         bigWigAverageOverBed {input} {params.brain_bed_5mb} {output} 2> {log}
@@ -42,15 +42,15 @@ rule bam2bigwig:
 
 rule copyNumber:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
-        tab = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}.tab")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        tab = os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.tab")
     output:
-        cnv = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_cnv_plot.pdf"),
-        seg = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_cnv_plot_segments.txt"),
-        ampl = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_amp_plot.pdf"),
-        gc = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_gc.pdf"),
-        qc1 = os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_readlength.pdf"),
-        qc2= os.path.join(RES_FOLDER, config['run'] + "/All/CNV/{run}_readlength_summary.txt")
+        cnv = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_cnv_plot.pdf"),
+        seg = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_cnv_plot_segments.txt")),
+        ampl = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_amp_plot.pdf")),
+        gc = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_gc.pdf")),
+        qc1 = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_readlength.pdf")),
+        qc2 = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "CNV", "{mergedSamples}_readlength_summary.txt"))
     params:
         brain_bed = os.path.join(config["git_dir"], "annotations/" + config["cnv"]["brain_bed"]),
         bin_size = config["cnv"]["binSize"],
@@ -59,9 +59,9 @@ rule copyNumber:
         script = os.path.join(config["git_dir"], 'utils', config["cnv"]["script"]),
         dirname = lambda wildcards, output: os.path.dirname(str(output[0]))
     log:
-        os.path.join(LOG_PATH, "calling/CNV", "{run}_copyNumber.log")
+        os.path.join(LOG_PATH, "calling/CNV", "{mergedSamples}_copyNumber.log")
     container:
-        config["containers_path"]+ config["R"]["sif"]
+        CONTAINERS_PATH + config["R"]["sif"]
     shell:
         """
         Rscript {params.script} {input.tab} \
@@ -72,5 +72,5 @@ rule copyNumber:
             {params.genome_subsampling} \
             {params.genome_version} \
             "" \
-            {wildcards.run} 2> {log}
+            {wildcards.mergedSamples} 2> {log}
         """

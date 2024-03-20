@@ -239,7 +239,7 @@ title <-  copyNumbersSegmented@phenoData@data[sample_nb,"name"]
 
 template <- objectsampletotemplate(copyNumbersSegmented, sample_nb)
 
-if (all(is.na(template$adjustedcopynumbers)) != TRUE){
+if (all(is.na(template$copynumbers)) != TRUE){
     # adjusted copy numbers by standard which is the median bin segment value of a sample and times the ploidy
     template$adjustedcopynumbers <- ploidy + ((template$copynumbers - standard) * (cellularity * (ploidy - 2) + 2))/(cellularity * standard)
     template$adjustedsegments <- ploidy + ((template$segments - standard) * (cellularity * (ploidy - 2) + 2))/(cellularity * standard)
@@ -261,18 +261,31 @@ if (all(is.na(template$adjustedcopynumbers)) != TRUE){
 
     write.table(segment[,c("chr","start","end","adjustedsegments")],paste(output_dir,"/",title,"_cnv_plot_segments.txt",sep=""),quote=FALSE,row.names=FALSE,col.names=TRUE,sep="\t")
 
-    bedGR <- GRanges(seqnames=bed[,1],IRanges(start=bed[,2],end=bed[,3]),name=bed[,"gene"])
+    if(!is.na(chr_list)){
 
-    cnv_nano <- nano_cnvplot(template,bedGR,cnv_conf,cellularity,ploidy,title,"Nano")
+        chr_list <- unlist(strsplit(as.character(chr_list),","))
 
-    pdf(paste(output_dir,"/",title,"_cnv_plot.pdf",sep=""),width=20,height=6)
-    print(cnv_nano)
-    dev.off()
+        bedGR <- GRanges(seqnames=bed[which(bed$chr%in%chr_list),1],IRanges(start=bed[which(bed$chr%in%chr_list),2],end=bed[which(bed$chr%in%chr_list),3]),name=bed[which(bed$chr%in%chr_list),"gene"])
+
+        cnv_nano <- nano_cnvplot(template[which(template$chr%in%chr_list),],bedGR,cnv_conf,cellularity,ploidy,title,"Nano")
+
+        pdf(paste(output_dir,"/",title,"_cnv_plot.pdf",sep=""),width=20,height=6)
+        print(cnv_nano)
+        dev.off()
+
+    } else {
+        bedGR <- GRanges(seqnames=bed[,1],IRanges(start=bed[,2],end=bed[,3]),name=bed[,"gene"])
+
+        cnv_nano <- nano_cnvplot(template,bedGR,cnv_conf,cellularity,ploidy,title,"Nano")
+
+        pdf(paste(output_dir,"/",title,"_cnv_plot.pdf",sep=""),width=20,height=6)
+        print(cnv_nano)
+        dev.off()
+    }
 
     ## amplification plot
 
     amp <- read.table(amp_file,stringsAsFactors=FALSE)
-
     if(!target_file == ""){
         targeted_genes <- read.table(target_file,stringsAsFactors=FALSE)
         amp[which(amp$V1%in%targeted_genes[,1]),"adaptive"] <- "Adaptive"
@@ -284,14 +297,13 @@ if (all(is.na(template$adjustedcopynumbers)) != TRUE){
     p <- ggplot(amp,aes(x=V1,y=V5,fill=adaptive)) +
             geom_bar(stat="identity",position="dodge") +
             theme_minimal()+theme(legend.position="none",axis.title.y=element_text(size=6),axis.title.x=element_text(size=6),axis.text.x=element_text(angle=45,size=6,hjust=1),panel.grid.major=element_blank(),panel.background=element_rect(fill="grey98")) +
-            # scale_x_discrete(expand=c(0,0)) +
             scale_y_continuous(expand=c(0,0)) +
             labs(x="Genes", y="Average signal around gene") +
             ggtitle(title) + facet_wrap(~adaptive, scales="free_x") +
             scale_fill_manual(values=c("Adaptive"="tomato3","Not Targeted"="steelblue"))
 
     pdf(paste(output_dir,"/",title,"_amp_plot.pdf",sep=""),width=10,height=4)
-    p
+    print(p)
     dev.off()
 }else{
     file.create(paste(output_dir,"/",title,"_cnv_plot_segments.txt",sep=""))

@@ -1,24 +1,20 @@
 import subprocess
-
-def getChrom(bed):
-    return subprocess.check_output(f"cut -f 1 {bed} | sort -Vu", shell=True).decode("utf-8").rstrip().split("\n")
-
-regions = getChrom(config["bed"])
+from utils.utils import getChrom
 
 rule pepper:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'], "All", "Mapping", config["run"] + ".bam"),
-        index = os.path.join(RES_FOLDER, config['run'], "All", "Mapping", config["run"] + ".bam.bai")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
     output:
-        os.path.join(RES_FOLDER, config["run"], "All", "SNV", "Pepper", "{region}/{region}_done.txt")
+        temp(os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}_{region}/{region}_done.txt"))
     params:
         ref = config["genome"],
-        parameters = config["pepper"]["parameters"]
+        parameters = config["pepper"][f"parameters_{config['flowCellType']}"]
     threads : config["pepper"]["threads"]
     log:
-        os.path.join(LOG_PATH, "calling/SNV", config["run"] + "_{region}_pepper.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_{region}_pepper.log")
     container:
-        config["containers_path"]+ config["pepper"]["sif"]
+        CONTAINERS_PATH + config["pepper"]["sif"]
     shell:
         """
         run_pepper_margin_deepvariant call_variant \
@@ -31,78 +27,78 @@ rule pepper:
         fi
         """
 
-rule concatVcfs:
+rule concatVcfsPepper:
     input:
-        expand(os.path.join(RES_FOLDER, config["run"], "All", "SNV", "Pepper", "{region}/{region}_done.txt"), region = regions)
+        expand(os.path.join(RES_FOLDER, "All", "SNV", "{{mergedSamples}}_{region}/{region}_done.txt"), region = getChrom(config["bed"], config["genomeFile"]))
     output:
-        vcf = os.path.join(RES_FOLDER, config["run"], "All", "SNV", config["run"] + ".pepper.vcf.gz"),
-        tabix = os.path.join(RES_FOLDER, config["run"], "All", "SNV", config["run"] + ".pepper.vcf.gz.tbi")
+        vcf = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz"),
+        tabix = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz.tbi")
     log:
-        os.path.join(LOG_PATH, "calling/SNV", config["run"] + "_pepper.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_pepper.log")
     container:
-        config["containers_path"]+ config["annotSV"]["sif"]
+        CONTAINERS_PATH + config["annotSV"]["sif"]
     shell:
         """
-        vcfs=$(cat {input} | sort -Vu | grep -v "^$")       
+        vcfs=$(cat {input} | sort -Vu | grep -v "^$") && \
         if [[ -z ${{vcfs}} ]]; then
         zgrep "#" "$(dirname {input[0]})"/intermediate_files/PEPPER_VARIANT_FULL.vcf.gz > "$(dirname {input[0]})"/pepper.vcf 
+
         else
         bcftools concat ${{vcfs}} -o "$(dirname {input[0]})"/pepper.vcf
         fi
-
-        bgzip "$(dirname {input[0]})"/pepper.vcf
-        mv "$(dirname {input[0]})"/pepper.vcf.gz {output.vcf}
-        tabix {output.vcf} 
-        rm -rf $(dirname $(dirname {input[0]})) 2> {log}
+        bgzip "$(dirname {input[0]})"/pepper.vcf && \
+        mv "$(dirname {input[0]})"/pepper.vcf.gz {output.vcf} && \
+        tabix {output.vcf} && rm -rf $(dirname {input[0]}) 2> {log}
         """
-
 
 rule nanoCaller:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
-        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai"),
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
     output:
-        vcf = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz"),
-        tabix = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz.tbi")
+        vcf = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.nanocaller.vcf.gz"),
+        tabix = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.nanocaller.vcf.gz.tbi")
     params:
         parameters = config["nanocaller"]["parameters"],
         bed = config["bed"],
         ref = config["genome"], 
-        dirname = os.path.join(RES_FOLDER, config['run'], "All/SNV/nanocaller_tmp")
+        dirname = os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}", "nanocaller_tmp"),
+        script = os.path.join(config["git_dir"], "utils", config["nanocaller"]["script"])
     threads: config["nanocaller"]["threads"]
     log:
-        os.path.join(LOG_PATH, "calling/SNV", "{run}_nanocaller.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_nanocaller.log")
     container:
-        config["containers_path"]+ config["nanocaller"]["sif"]
+        CONTAINERS_PATH + config["nanocaller"]["sif"]
     shell:
         """
-        NanoCaller --bam {input.bam} {params.parameters} --output {params.dirname} --ref {params.ref} --cpu {threads} --bed {params.bed} 2> {log} && \
-        mv {params.dirname}/ont.vcf.gz {output.vcf} && mv {params.dirname}/ont.vcf.gz.tbi {output.tabix} && \
-        rm -fr {params.dirname}
+        NanoCaller --bam {input.bam} {params.parameters} --output {params.dirname} --ref {params.ref} --cpu {threads} --bed {params.bed} && \
+        python3 {params.script} -i {params.dirname}/ont.vcf.gz -o {output.vcf} && \
+        rm -fr {params.dirname} 2> {log}
         """
 
 rule clair3:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam"),
-        index = os.path.join(RES_FOLDER, config['run'] + "/All/Mapping/{run}.bam.bai")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
     output:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz")
+        temp(os.path.join(RES_FOLDER, "All", "SNV", "Clair3", "{mergedSamples}", "{chromosome}.clair3.vcf.gz"))
     params:
-        model_path = config["clair3"]["model_path"],
+        model_path = config["clair3"][f"model_path_{config['flowCellType']}"],
+        parameters = config["clair3"]["parameters"],
         ref = config["genome"], 
-        bed = config["bed"],
-        dirname = lambda wildcards, output: os.path.join(os.path.dirname(str(output)), "clair3_tmp")
+        bed = os.path.join("/tmp", "{chromosome}_clair3.bed"),
+        dirname = lambda wildcards, output: os.path.join(os.path.dirname(str(output)), f"clair3_{wildcards.chromosome}_tmp")
     threads: config["clair3"]["threads"]
     log:
-        os.path.join(LOG_PATH, "calling/SNV", "{run}_clair3.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_clair3_{chromosome}.log")
     container:
-        config["containers_path"]+ config["clair3"]["sif"]
+        CONTAINERS_PATH + config["clair3"]["sif"]
     shell:
         """
         run_clair3.sh --bam_fn={input.bam}  \
+           {params.parameters} \
            --ref_fn={params.ref}  \
            --threads={threads} \
-           --platform=ont \
            --bed_fn={params.bed}  \
            --model_path={params.model_path} \
            --output={params.dirname} 2> {log} && \
@@ -110,37 +106,51 @@ rule clair3:
         rm -fr {params.dirname}
         """
 
+rule clair3_concat:
+    input:
+        expand(os.path.join(RES_FOLDER, "All", "SNV", "Clair3", "{{mergedSamples}}", "{chromosome}.clair3.vcf.gz"), chromosome = getChrom(config["bed"], config["genomeFile"], True))
+    output:
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz")
+    log:
+        os.path.join(LOG_PATH, "calling/SNV/concat_{mergedSamples}_clair3.log")
+    container:
+        CONTAINERS_PATH + config["annotSV"]["sif"]
+    shell:
+        """
+        bcftools concat -o {output} -O z {input} 2> {log}
+        """
+
 rule clair3_index:
     input:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz")
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz")
     output:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz.tbi")
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz.tbi")
     log:
-        os.path.join(LOG_PATH, "calling/SNV", "{run}_clair3_index.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_clair3_index.log")
     container:
-        config["containers_path"]+ config["annotSV"]["sif"]
+        CONTAINERS_PATH + config["annotSV"]["sif"]
     shell:
         """tabix {input}"""
 
 rule combine:
     input:
-        nanocaller = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz"),
-        nanocallerIndex = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.nanocaller.vcf.gz.tbi"),
-        pepper = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.pepper.vcf.gz"),
-        pepperIndex = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.pepper.vcf.gz.tbi"),
-        clair3 = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz"),
-        clair3Index = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.clair3.vcf.gz.tbi")
+        nanocaller = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.nanocaller.vcf.gz"),
+        nanocallerIndex = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.nanocaller.vcf.gz.tbi"),
+        pepper = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz"),
+        pepperIndex = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz.tbi"),
+        clair3 = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz"),
+        clair3Index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz.tbi")
     output:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz")
+        temp(os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}.vcf.gz"))
     params:
         javaParameters = config["combineVariants"]["javaParameters"],
         tmpDir = lambda wildcards, output: os.path.dirname(str(output)),
         parameters = config["combineVariants"]["parameters"],
         genome = config["genome"]
     log:
-        os.path.join(LOG_PATH, "calling/SNV", "{run}_combineVariants.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_combineVariants.log")
     container:
-        config["containers_path"]+ config["combineVariants"]["sif"]
+        CONTAINERS_PATH + config["combineVariants"]["sif"]
     shell:
         """
         java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/GenomeAnalysisTK.jar -T CombineVariants {params.parameters} -R {params.genome} \
@@ -149,34 +159,36 @@ rule combine:
 
 rule combine_index:
     input:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV", config['run'] + ".vcf.gz")
+        os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}.vcf.gz")
     output:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV", config['run'] + ".vcf.gz.tbi")
+        temp(os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}.vcf.gz.tbi"))
     log:
-        os.path.join(LOG_PATH, "calling/SNV", config['run'] + "_combine_index.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_combine_index.log")
     container:
-        config["containers_path"]+ config["annotSV"]["sif"]
+        CONTAINERS_PATH + config["annotSV"]["sif"]
     shell:
         """tabix {input}"""
 
 rule snpEff:
     input:
-        vcf = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz"),
-        index = os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}.vcf.gz.tbi")
+        vcf = os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}.vcf.gz"),
+        index = os.path.join(RES_FOLDER, "All", "SNV", "{mergedSamples}.vcf.gz.tbi")
     output:
-        os.path.join(RES_FOLDER, config['run'] + "/All/SNV/{run}_annot.vcf")
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}_annot.vcf")
     params:
         javaParameters = config["combineVariants"]["javaParameters"],
         tmpDir = lambda wildcards, output: os.path.dirname(str(output)),
         parameters = config["snpEff"]["parameters"],
-        genome_version = config["genome_version"],
+        genome_version = config["genome_version"].split("_")[0],
         dataDir = config["snpEff"]["dataDir"]
     log:
-        os.path.join(LOG_PATH, "calling/SNV", "{run}_snpEff.log")
+        os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_snpEff.log")
     container:
-        config["containers_path"]+ config["snpEff"]["sif"]
+        CONTAINERS_PATH + config["snpEff"]["sif"]
     shell:
         """
-        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/share/snpeff-4.3.1t-5/snpEff.jar eff {params.parameters} -dataDir {params.dataDir} \
+        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/share/snpeff-4.3.1t-5/snpEff.jar eff {params.parameters} \
+        -dataDir {params.dataDir} \
+        -noStats \
         {params.genome_version} {input.vcf} > {output} 2> {log}
         """

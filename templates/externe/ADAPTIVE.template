@@ -1,0 +1,14 @@
+backup/ANALYSIS/{run}/BAM/{mergedSamples}.bam
+backup/ANALYSIS/{run}/BAM/{mergedSamples}.bam.bai
+backup/ANALYSIS/{run}/QC/{run}_qc.tsv
+backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.cuteSV.vcf
+backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.nanovar.pass.vcf
+backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.sniffles.vcf
+backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.svim.vcf
+backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.annotSV.tsv
+backup/ANALYSIS/{mergedSamples}/VARIANTS/{mergedSamples}.clair3.vcf.gz
+backup/ANALYSIS/{mergedSamples}/VARIANTS/{mergedSamples}.nanocaller.vcf.gz
+backup/ANALYSIS/{mergedSamples}/VARIANTS/{mergedSamples}.pepper.vcf.gz
+backup/ANALYSIS/{mergedSamples}/VARIANTS/{mergedSamples}_annot.vcf
+backup/ANALYSIS/{mergedSamples}/CNV/{mergedSamples}_cnv_plot.pdf
+backup/ANALYSIS/{mergedSamples}/METHYLATION/{mergedSamples}.methylation_calls_frequency.tsv

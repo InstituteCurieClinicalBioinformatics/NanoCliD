@@ -1,13 +1,28 @@
 from utils.utils import *
 
-def getSummaryFile(wildcards):
-    return config["summaryFiles"][wildcards.injection]
-
 def getReportFile(wildcards):
-    return config["reportFiles"][wildcards.injection]
+    return config["reportFiles"][wildcards.samples]
 
 def getFast5Dir(wildcards):
-    return config["fast5Dir"][wildcards.injection]
+    if hasattr(wildcards, "mergedSamples"):
+        return config["fast5Dir"][wildcards.mergedSamples]
+    return config["fast5Dir"][wildcards.samples]
+
+def getSubSampling(wildcards, outDir, extension):
+    path = {"bam" : os.path.join(outDir, "INJECTION", "SAMPLE", "Mapping", "SAMPLE.bam"), \
+    "fastq" : os.path.join(outDir, "INJECTION", "SAMPLE", "FASTQ", "SAMPLE.fastq.gz"), \
+    "blow5" : os.path.join(outDir, "INJECTION", "SAMPLE", "blow5"), \
+    "fast5" : os.path.join(outDir, "INJECTION", "SAMPLE", "fast5")}
+    files = []
+    if hasattr(wildcards, "mergedSamples"):
+        samplesToMerge = config["samplesToMerge"][wildcards.mergedSamples]
+        for injection in config["wildcards"]["injections"]:
+            for sample in config["fast5Dir"].keys():
+                if sample in samplesToMerge and injection in config["fast5Dir"][sample]:
+                    files.append(path[extension].replace("INJECTION", injection).replace("SAMPLE", sample))
+    else:
+        files.append(path[extension].replace("INJECTION", wildcards.injections).replace("SAMPLE", wildcards.samples))
+    return files
 
 include: f"{config['git_dir']}/workflow/rules/common.snk"
 
@@ -17,78 +32,172 @@ module common:
 
 rule guppy:
     input:
-        os.path.join(config["input_dir"], config["run"], "{injection}")
+        getFast5Dir
     output:
-        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        fastq =  os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "FASTQ", "{samples}.fastq.gz"),
     params:
-        runner = config["guppy"]["runner"],
-        parameters = config["guppy"]["parameters"]
+        parameters = config["guppy"]["parameters"],
+        slow5tools = os.path.join(CONTAINERS_PATH, config["slow5tools"]["sif"]),
+        fromBlow5 = config["fromBlow5"],
+        fromPod5 = config["fromPod5"]
     log:
-        os.path.join(LOG_PATH, "baseCalling/guppy_{injection}.log")
+        os.path.join(LOG_PATH, "baseCalling/guppy_{injections}_{samples}.log")
     threads: 1
     shell:
-        """{params.runner} {params.parameters} --input_path {input} --save_path $(dirname {output.fastq}) 2> {log} &&
+        """
+        BASE_CALLER=guppy_basecall_client
+        INPUT_PATH={input}
+        if [ {params.fromPod5} == "yes" ]; then
+            BASE_CALLER=ont_basecall_client
+        fi
+        if [ {params.fromBlow5} == "yes" ]; then
+            singularity exec {params.slow5tools} slow5tools s2f -d $(dirname {input})/fast5 {input} 2> {log}
+            INPUT_PATH=$(dirname {input})/fast5
+        fi
+        $BASE_CALLER {params.parameters} --input_path $INPUT_PATH --save_path $(dirname {output.fastq}) 2> {log} &&
         find $(dirname {output.fastq})/pass/ -type f -name '*.fastq.gz' -exec cat {{}} > {output.fastq} \; 2> {log}
         """
 
+rule concatenateFastq:
+    input:
+        fastqs = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "fastq")
+    output:
+        fastq =  os.path.join(RES_FOLDER, "All", "FASTQ", "{mergedSamples}.fastq.gz")
+    log:
+        os.path.join(LOG_PATH, "concatenateSummaryFiles_{mergedSamples}.log")
+    shell:
+        """
+        fastqs=({input.fastqs})
+        nbFiles=$(echo "${{#fastqs[@]}}")
+        if [ $nbFiles -ge 2 ]; then
+            cat {input.fastqs} > {output.fastq} 2> {log}
+        else
+            cp {input.fastqs[0]} {output.fastq} 2> {log}
+        fi
+        """
+
+if config["fromPod5"] == "yes":
+    rule pod5Tofast5:
+        input:
+            getFast5Dir
+        output:
+            directory(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "fast5"))
+        log:
+            os.path.join(LOG_PATH, "pod5/pod5tofast5_{injections}_{samples}.log")
+        container:
+            CONTAINERS_PATH + config["pod5tools"]["sif"]
+        shell:
+            """
+            pod5 convert to_fast5 {input} --output {output} 2> {log}
+            """
+
+rule fast5Toblow5:
+    input:
+        getFast5Dir if config["fromPod5"] == "no" else lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "fast5")
+    output:
+        blow5 = directory(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "blow5"))
+    params:
+        injectionFolder = RES_FOLDER_INJECTION
+    log:
+        os.path.join(LOG_PATH, "blow5/f2s_{injections}_{samples}.log") 
+    container:
+        CONTAINERS_PATH + config["slow5tools"]["sif"]   
+    shell:
+        """
+        slow5tools f2s --to blow5 -d {params.injectionFolder}/{wildcards.injections}/{wildcards.samples}/blow5 {input} 2> {log}
+        """
+
+rule mergeBlow5:
+    input:
+        blow5s = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "blow5")
+    output:
+        blow5 = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5")
+    params:
+        parameters = config["slow5_merge"]["parameters"]
+    log:
+        os.path.join(LOG_PATH, "blow5/merged_{mergedSamples}.log") 
+    container:
+        CONTAINERS_PATH + config["slow5tools"]["sif"]   
+    shell:
+        """
+        slow5tools merge {params.parameters} -o {output.blow5} {input.blow5s} 2> {log}
+        """    
+
+rule f5c_index:
+    input:
+        fastq =  os.path.join(RES_FOLDER, "All", "FASTQ", "{mergedSamples}.fastq.gz"),
+        blow5 = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5")
+    output:
+        blow5 = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5.idx")
+    params:
+        bin = config["f5c"]["bin"],
+    log:
+        os.path.join(LOG_PATH, "f5c/f5c_index_{mergedSamples}.log")
+    container:
+        CONTAINERS_PATH + config["f5c"]["sif"]
+    shell:
+        """
+        {params.bin} index --slow5 {input.blow5} {input.fastq} 2> {log}
+        """   
+
 rule minimap2:
     input:
-        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        fastq =  os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "FASTQ", "{samples}.fastq.gz")
     output:
-        sam =  temp(os.path.join(RES_FOLDER, config['run'], "{injection}/{injection}.sam"))
+        sam =  temp(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "{samples}.sam"))
     params:
         report = getReportFile,
         mmi = config["minimap2"]["mmi"],
         parameters = config["minimap2"]["parameters"],
         cn = config["minimap2"]["cn"]
     log:
-        os.path.join(LOG_PATH, "mapping/minimap2_{injection}.log")
+        os.path.join(LOG_PATH, "mapping/{injections}_minimap2_{samples}.log")
     container:
-        config["containers_path"] + config["minimap2"]["sif"]
+        CONTAINERS_PATH + config["minimap2"]["sif"]
     shell:
-        """if [[ -f {params.report} ]];
+        """if [ ! -z {params.report} ];
             then
                 RUN=$(grep "\"protocol_group_id\"" {params.report} | sed 's/"protocol_group_id\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1')
                 GUPPYVERSION=$(grep "\"guppy_version\"" {params.report} |  sed 's/\"guppy_version\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1')
                 SAMPLEID=$(grep "\"sample_id\"" {params.report} |  sed 's/\"sample_id\": \"\(.*\)"/\\1/' | tr -d "," | awk '{{$1=$1}};1') 
                 FLOWCELLID=$(grep "\"flow_cell_id\"" {params.report} |  sed 's/\"flow_cell_id\": \"\(.*\)"/\\1/' |  tr -d ","  | awk '{{$1=$1}};1')
-                RG="@RG\\tID:${{RUN}}\\tCN:{params.cn}\\tSM:${{SAMPLEID}}\\tPL:ONT\\tPU:${{FLOWCELLID}}\\tPM:guppy ${{GUPPYVERSION}}"
+                RG="@RG\\tID:{wildcards.samples}\\tCN:{params.cn}\\tSM:${{SAMPLEID}}\\tPL:ONT\\tPU:${{FLOWCELLID}}\\tPM:guppy ${{GUPPYVERSION}}"
             else
-                RG="@RG\\tID:{wildcards.injection}\\tCN:{params.cn}\\tSM:Unknown(no_report_file)\\tPL:ONT\\tPU:Unknown(no_report_file)\\tPM:Unknown(no_report_file)"
+                RG="@RG\\tID:{wildcards.samples}\\tCN:{params.cn}\\tSM:Unknown(no_report_file)\\tPL:ONT\\tPU:Unknown(no_report_file)\\tPM:Unknown(no_report_file)"
             fi &&
             minimap2 {params.parameters} -R "$RG" {params.mmi} {input.fastq} > {output.sam} 2> {log}"""
 
 rule samtools:
     input:
-        sam =  os.path.join(RES_FOLDER, config['run'], "{injection}/{injection}.sam")
+        sam =  os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "{samples}.sam")
     output:
-        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam")
+        bam =  temp(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "Mapping", "{samples}.bam"))
     params:
         parameters = config["samtools_sort"]["parameters"]
     log:
-        os.path.join(LOG_PATH, "mapping/sam2bam_{injection}.log")
+        os.path.join(LOG_PATH, "mapping/{injections}_sam2bam_{samples}.log")
     container:
-        config["containers_path"] + config["samtools_sort"]["sif"]
+        CONTAINERS_PATH + config["samtools_sort"]["sif"]
     shell:
         """samtools sort {params.parameters} {input.sam} -o {output.bam} 2> {log}"""
 
 rule mergeBam:
     input:
-        bams = expand(os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"), injection = config["samples"])
+        bams = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "bam")
     output:
-        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam")
     params:
         parameters = config["samtools_merge"]["parameters"]
     log:
-        os.path.join(LOG_PATH, f"merge/mergeBam_{config['run']}.log")
+        os.path.join(LOG_PATH, "merge/mergeBam_{mergedSamples}.log")
     container:
-        config["containers_path"] + config["samtools_sort"]["sif"]
+        CONTAINERS_PATH + config["samtools_sort"]["sif"]
     shell:
         """
         bams=({input.bams})
         nbFiles=$(echo "${{#bams[@]}}")
         if [ $nbFiles -ge 2 ]; then
-            samtools merge {params.parameters} -f {output.bam} {input.bams} 2> log
+            samtools merge {params.parameters} -f {output.bam} {input.bams} 2> {log}
         else
             cp {input.bams[0]} {output.bam}
         fi
@@ -96,52 +205,104 @@ rule mergeBam:
 
 use rule samtools_index from common as samtools_merge_index with:
     input:
-        bam = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam")
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam")
     output:
-        index = os.path.join(RES_FOLDER, config['run'], 'All/Mapping', config["run"] + ".bam.bai")
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
     log:
-        os.path.join(LOG_PATH, "index", "samtoolsIndex_" + config['run'] + ".log")
+        os.path.join(LOG_PATH, "index", "samtoolsIndex_{mergedSamples}.log")
 
-rule nanopolish_index:
+use rule samtools_index from common as samtoolsOnTarget_index with:
     input:
-        fast5_dir = getFast5Dir,
-        sequencing_summary = getSummaryFile,
-        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz")
+        bam = os.path.join(RES_FOLDER, "All", "Mapping", "{mergedSamples}.ontarget.bam")
     output:
-        os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt")
+        index = temp(os.path.join(RES_FOLDER, "All", "Mapping", "{mergedSamples}.ontarget.bam.bai"))
     log:
-        os.path.join(LOG_PATH, "methylationCalling/nanopolish_index_{injection}.log")
-    container:
-        config["containers_path"] + config["nanopolish"]["sif"]
-    shell:
-        """nanopolish index -d {input.fast5_dir} -s {input.sequencing_summary} {input.fastq} 2> {log} && touch {output}"""
+        os.path.join(LOG_PATH, "index", "samtoolsOnTargetIndex_{mergedSamples}.log")
 
-rule nanopolish_call_methylation:
+rule f5c_call_methylation:
     input:
-        index = os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.index.txt"),
-        fastq =  os.path.join(config["input_dir"], config['run'], "{injection}/FASTQ/{injection}.fastq.gz"),
-        bam =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam"),
-        bai =  os.path.join(RES_FOLDER, config['run'], "{injection}/Mapping/{injection}.bam.bai"),
+        blow5 = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5"),
+        index = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5.idx"),
+        fastq =  os.path.join(RES_FOLDER, "All", "FASTQ", '{mergedSamples}.fastq.gz'),
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        bai = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai"),
     output:
-        os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.methylation_calls.tsv")
+        temp(os.path.join(RES_FOLDER, "All", "{mergedSamples}_{regionMethylation}.methylation_calls.tsv"))
     params:
-        parameters = config["nanopolish_call_methylation"]["parameters"],
-        genome = config["genome"]
+        parameters = config["f5c_call_methylation"]["parameters"],
+        genome = config["genome"],
+        bin = config["f5c"]["bin"],
+        flowCellType = config['flowCellType']
     log:
-        os.path.join(LOG_PATH, "methylationCalling/call_methylation_{injection}.log")
+        os.path.join(LOG_PATH, "methylationCalling/call_methylation_{mergedSamples}_{regionMethylation}.log")
     container:
-        config["containers_path"] + config["nanopolish"]["sif"]
+        CONTAINERS_PATH + config["f5c"]["sif"]
     shell:
-        """nanopolish call-methylation -r {input.fastq} -b {input.bam} -g {params.genome} {params.parameters} > {output} 2> {log}"""
+        """
+        {params.bin} call-methylation \
+        -r {input.fastq} \
+        -b {input.bam} \
+        -g {params.genome} \
+        -w {wildcards.regionMethylation} \
+        --slow5 {input.blow5} \
+        --pore {params.flowCellType} \
+        {params.parameters} \
+        -o {output} 2> {log}
+        """
 
-rule mergeMethylation:
+rule concat_call_methylation:
     input:
-        methylations = expand(os.path.join(RES_FOLDER, config['run'], "{injection}/Methylation/{injection}.methylation_calls.tsv"), injection = config["samples"])
+        expand(os.path.join(RES_FOLDER, "All", "{{mergedSamples}}_{regionMethylation}.methylation_calls.tsv"), regionMethylation = splitBedForMethylation(os.path.join(config["git_dir"], "annotations", config["epicBed"]), config["genomeFile"], chrom = True))
     output:
-        methylation = os.path.join(RES_FOLDER, config['run'], 'All/Methylation', config["run"] + ".methylation_calls.tsv")
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "METHYLATION", "{mergedSamples}.methylation_calls.tsv")
     log:
-        os.path.join(LOG_PATH, f"merge/mergeMethylation_{config['run']}.log")
-    container:
-        config["containers_path"] + config["nanopolish"]["sif"]
+        os.path.join(LOG_PATH, "methylationCalling/call_methylation_{mergedSamples}_concat.log")
     shell:
-        """calculate_methylation_frequency.py {input.methylations} > {output.methylation} 2> {log}"""
+        """
+        cat {input} > {output}2
+        grep "chromosome" {input[0]} > {output}
+        grep -v chromosome {output}2 >> {output}
+        rm {output}2
+        """
+
+rule calculate_methylation_frequency:
+    input:
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "METHYLATION", "{mergedSamples}.methylation_calls.tsv")
+    output:
+        temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}","METHYLATION", "{mergedSamples}.methylation_calls_frequency_unannotated.tsv"))
+    params:
+        parameters = config["calculate_methylation_frequency"],
+        bin = config["f5c"]["bin"],
+    log:
+        os.path.join(LOG_PATH, "methylationCalling/calculate_methylation_frequency_{mergedSamples}.log")
+    container:
+        CONTAINERS_PATH + config["f5c"]["sif"]
+    shell:
+        """
+        {params.bin} meth-freq -i {input} {params.parameters} -o {output}
+        """
+
+rule annot_methylation_frequency_table:
+    input:
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}","METHYLATION", "{mergedSamples}.methylation_calls_frequency_unannotated.tsv")
+    output:
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}","METHYLATION", "{mergedSamples}.methylation_calls_frequency.tsv")
+    params:
+        epicBed = os.path.join(config["git_dir"], "annotations", config["epicBed"])
+    log:
+        os.path.join(LOG_PATH, "methylationCalling/annotate_methylation_frequency_{mergedSamples}.log")
+    container:
+        CONTAINERS_PATH + config["bedtools"]["sif"]
+    shell:
+        """
+        header=$(head -n 1 {input})
+        header=$(echo $header annotation)
+        echo $header > {output}
+        sed -i -e 's/ /\t/g' {output}
+        tail -n +2 {input} > tmp_{wildcards.mergedSamples}
+        bedtools intersect \
+        -a tmp_{wildcards.mergedSamples} \
+        -b {params.epicBed} \
+        -loj | \
+        cut -f 1,2,3,4,5,6,7,8,12 >> {output} 2> {log}
+        """        

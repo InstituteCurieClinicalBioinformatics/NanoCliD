@@ -4,20 +4,55 @@ import sys
 sys.path.append(config['git_dir'])
 from utils.utils import *
 import pandas as pd
+import json
+import re
 
-RES_FOLDER = config["output_dir"]
-LOG_PATH=os.path.join(RES_FOLDER, config['run'], "logs/")
+hostname = socket.gethostname()
+
+RES_FOLDER_INJECTION = config["output_dir"]
+if config["analysis"] == "multipleInjections":
+    RES_FOLDER_INJECTION = os.path.join(config["output_dir"], config["run"])
+
+RES_FOLDER = os.path.join(config["output_dir"], config["run"])
+
+LOG_PATH = os.path.join(config["output_dir"], config["run"], "logs/")
+CONTAINERS_PATH = workflow.singularity_prefix
+
+if "shbli" in hostname or "node" in hostname:
+    LOG_CLUSTER_PATH=os.path.join(config["output_dir"], config["run"], "logs_cluster/")
+    os.makedirs(LOG_CLUSTER_PATH, exist_ok=True)
 
 include: f"{config['git_dir']}/workflow/rules/preprocessing.snk"
 include: f"{config['git_dir']}/workflow/rules/qc.snk"
-include: f"{config['git_dir']}/workflow/rules/common.snk"
 include: f"{config['git_dir']}/workflow/rules/sv_calling.snk"
 include: f"{config['git_dir']}/workflow/rules/snv_calling.snk"
 include: f"{config['git_dir']}/workflow/rules/cnv.snk"
-include: f"{config['git_dir']}/workflow/rules/circos.snk"
+try:
+    include: f"{config['git_dir']}/workflow/rules/curie/classification.snk"
+    curieNetwork = True
+except:
+    curieNetwork = False
 
+wildcard_constraints:
+    mergedSamples = "|".join(config["wildcards"]["mergedSamples"]),
+    samples = "|".join(config["wildcards"]["samples"])
 
 # target rules
 rule all:
     input:
-        getOutputs(config["analysis"], RES_FOLDER, config["samples"], config["run"], config["input_dir"])
+        getOutputs(config["template"], RES_FOLDER, RES_FOLDER_INJECTION, config["wildcards"], config["combinaison"])
+
+onstart:
+    print("Launching NanoCliD analysis")
+    if "email" in config.keys():
+        sendMail(config, CONTAINERS_PATH, curieNetwork, "onstart")
+
+onsuccess: 
+    print("NanoCliD completed successfully!")
+
+onerror: 
+    print("One or more errors occurred. Please refer to log file.")
+    shell('echo {log} > log')
+    logPath = subprocess.check_output("cat log && rm log", shell = True).decode("utf-8").rstrip()
+    if "email" in config.keys():
+        sendMail(config, CONTAINERS_PATH, curieNetwork, "onerror", logPath)

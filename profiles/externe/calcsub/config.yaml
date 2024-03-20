@@ -1,0 +1,12 @@
+use-singularity: true
+singularity-args: '-B GIT_DIR/utils/,GIT_DIR/annotations/,REF_DIR,GIT_DIR/annotations/nanovar/:/mnt'
+singularity-prefix: "GIT_DIR/singularity/"
+jobs: 100
+latency-wait: 60
+keep-going: True
+verbose: True
+rerun-incomplete: True
+printshellcmds: True
+cluster: "qsub -N {rule}_{wildcards} -l walltime={resources.time_min},mem={resources.mem_gb}gb,nodes=1:ppn={threads} -j oe -o logs_cluster/${{USER}}_{rule}_{wildcards}.cluster -q diag"
+default-resources: [cpus=8, mem_gb=40, ram=1, time_min="01:00:00", tmpdir="/scratch/"]
+resources: [cpus=100, ram=500]

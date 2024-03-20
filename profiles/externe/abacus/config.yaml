@@ -1,0 +1,12 @@
+use-singularity: true
+singularity-args: '-B GIT_DIR/utils/,GIT_DIR/annotations/,REF_DIR,GIT_DIR/annotations/nanovar/:/bnd'
+singularity-prefix: "GIT_DIR/singularity/"
+jobs: 100
+latency-wait: 36000
+keep-going: True
+verbose: True
+rerun-incomplete: True
+printshellcmds: True
+cluster: 'sbatch -t {resources.time} --mem={resources.mem_gb}G -c {threads} -o logs_cluster/${{USER}}_{rule}_{wildcards}.cluster -e logs_cluster/${{USER}}_{rule}_{wildcards}.cluster'
+default-resources: [cpus=1, mem_gb=40, time='100:00:00']
+resources: [cpus=100, ram=500]
