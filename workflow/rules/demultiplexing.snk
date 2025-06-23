@@ -8,6 +8,11 @@ import json
 import re
 
 hostname = socket.gethostname()
+curieNetwork = True
+
+RES_FOLDER_INJECTION = config["output_dir"]
+if config["analysis"] == "multipleInjections":
+    RES_FOLDER_INJECTION = os.path.join(config["output_dir"], config["run"])
 
 RES_FOLDER = os.path.join(config["output_dir"], config["run"])
 
@@ -18,168 +23,56 @@ if "shbli" in hostname or "node" in hostname:
     LOG_CLUSTER_PATH=os.path.join(RES_FOLDER, "logs_cluster/")
     os.makedirs(LOG_CLUSTER_PATH, exist_ok=True)
 
-def getFast5Dir(fast5DirPaths):
-    paths = list(fast5DirPaths.values())
-    paths = [path for path in paths if not isinstance(path, list)]
-    return paths[0]
+concatFastq(config["output_dir"], config["run"], config["wildcards"]["injections"], config["wildcards"]["samples"], RES_FOLDER_INJECTION)
 
-def parseCombinaisonForBash(combinaison):
-    combinaisonForBash = []
-    for paire in combinaison:
-        paire = list(paire.items())
-        injection = paire[1][-1]
-        sample = paire[0][-1]
-        combinaisonForBash.append(f"{injection}-{sample}")
-    return combinaisonForBash
 
 rule all:
     input:
-        os.path.join(config["input_dir"], config["run"], "demultiplexing_done.txt"),
-        expand(os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5.idx"), mergedSamples = config["wildcards"]["mergedSamples"]),
-        expand(os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5"), mergedSamples = config["wildcards"]["mergedSamples"]),
+        expand(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "FASTQ", "{samples}.fastq.gz"), injections = config["wildcards"]["injections"], samples = config["wildcards"]["samples"]),
 
-rule guppy:
+rule basecalling:
     input:
-        getFast5Dir(config["fast5Dir"])
+        lambda wc: getFast5Dir(wc, fromBlow5 = config["fromBlow5"], extension = "fast5", onlyOnePath = True, config = config)
     output:
-        os.path.join(config["input_dir"], config["run"], "demultiplexing_done.txt")
+        fastq = expand(os.path.join(RES_FOLDER_INJECTION, "{{injections}}", "{samples}", "FASTQ", "{samples}.fastq.gz"), samples = config["wildcards"]["samples"]) 
     params:
-        parameters = config["guppy"]["parameters"],
-        inputFolder = config["input_dir"],
-        run = config["run"],
-        combinaison = parseCombinaisonForBash(config["combinaison"])
+        parameters_guppy = config["guppy"]["parameters_standalone"],
+        parameters_dorado = config["dorado"]["parameters"],
+        model_dorado = config["dorado"]["model"],
+        parameters_dorado_demux = config["dorado"]["demux"],
+        fromPod5 = config["fromPod5"],
+        samples = config["wildcards"]["samples"],
+        globalOutDir = RES_FOLDER_INJECTION
     log:
-        os.path.join(LOG_PATH, "baseCalling/guppy_demultiplexing.log")
+        os.path.join(LOG_PATH, "baseCalling/{injections}.log")
     threads: 1
+    container:
+        os.path.join(CONTAINERS_PATH, config["guppy"]["sif"]) if config["fromPod5"] == "no" else os.path.join(CONTAINERS_PATH, config["dorado"]["sif"])
     shell:
         """
-        guppy_basecall_client {params.parameters} --input_path {input} --save_path {params.inputFolder}/{params.run}/DEMULTIPLEXING/ 2> {log}
-        for paire in {params.combinaison}
+        mkdir -p $(dirname {input})/fastq_pass
+        if [ {params.fromPod5} == "yes" ]; then
+            OUTPUT_FASTQ_FOLDER={params.globalOutDir}/{wildcards.injections}/FASTQ
+            mkdir -p $OUTPUT_FASTQ_FOLDER
+            dorado basecaller {params.parameters_dorado} {params.model_dorado} {input} > $OUTPUT_FASTQ_FOLDER/{wildcards.injections}.fastq 2> {log}
+            dorado demux {params.parameters_dorado_demux} --output-dir {input}/fastq_pass $OUTPUT_FASTQ_FOLDER/{wildcards.injections}.fastq 2> {log}
+        else
+            /opt/ont-guppy/bin/guppy_basecaller {params.parameters_guppy} --input_path {input} --save_path {input}/fastq_pass 2> {log}
+        fi
+        for sample in {params.samples}
         do
-            injection=$(echo $paire | cut -d '-' -f 1)
-            if [ $injection == {params.run} ]; then
-                OUT_FOLDER={params.inputFolder}
-            else
-                OUT_FOLDER={params.inputFolder}/{params.run}
-            fi
-            sample=$(echo $paire | cut -d '-' -f 2)
             barcode=$(echo $sample | cut -d '_' -f 1)
             nb=${{barcode:2:2}}
-            mkdir -p $OUT_FOLDER/$injection
-            mkdir -p $OUT_FOLDER/$injection/$sample/
-            mkdir -p $OUT_FOLDER/$injection/$sample/FASTQ/
-            cat {params.inputFolder}/{params.run}/DEMULTIPLEXING/pass/barcode$nb/*fastq.gz > "$OUT_FOLDER"/"$injection"/"$sample"/FASTQ/"$sample".fastq.gz
-        done
-        touch {output}
+            mkdir -p {params.globalOutDir}/{wildcards.injections}/$sample/FASTQ
+            if [ {params.fromPod5} == "yes" ]; then
+                mv {input}/fastq_pass/*_barcode$nb.fastq {params.globalOutDir}/{wildcards.injections}/$sample/FASTQ/$sample.fastq 2> {log}
+                bgzip {params.globalOutDir}/{wildcards.injections}/$sample/FASTQ/$sample.fastq 2> {log}
+            else
+                cat {input}/fastq_pass/pass/barcode$nb/*.fastq.gz > {params.globalOutDir}/{wildcards.injections}/$sample/FASTQ/$sample.fastq.gz 2> {log}
+            fi
+        done       
         """
-
-if config["fromPod5"] == "yes":
-    rule pod5Tofast5:
-        input:
-            getFast5Dir(config["fast5Dir"])
-        output:
-            directory(os.path.join(RES_FOLDER_INJECTION, "fast5"))
-        log:
-            os.path.join(LOG_PATH, "pod5/pod5tofast5_{injections}_{samples}.log")
-        container:
-            CONTAINERS_PATH + config["pod5tools"]["sif"]
-        shell:
-            """
-            pod5 convert to_fast5 {input} --output {output} 2> {log}
-            """
-
-rule fast5Toblow5:
-    input:
-        getFast5Dir(config["fast5Dir"]) if config["fromPod5"] == "no" else os.path.join(RES_FOLDER_INJECTION, "fast5")
-    output:
-        blow5 = directory(expand(os.path.join(config["input_dir"], config["run"], "{samples}", "blow5"), samples = config["wildcards"]["samples"]))
-    params:
-        inputFolder = config["input_dir"],
-        run = config["run"],
-        combinaison = parseCombinaisonForBash(config["combinaison"])
-    log:
-        os.path.join(LOG_PATH, "blow5/f2s.log") 
-    container:
-        CONTAINERS_PATH + config["slow5tools"]["sif"]   
-    shell:
-        """
-        firstCombinaison=$(echo {params.combinaison} | cut -d " " -f 1)
-        injectionFirstElement=$(echo $firstCombinaison | cut -d "-" -f 1)
-        sampleFirstElement=$(echo $firstCombinaison | cut -d "-" -f 2)
-
-        slow5tools f2s --to blow5 -d {params.inputFolder}/{params.run}/blow5 {input} 2> {log}
         
-        for paire in {params.combinaison}
-        do
-            injection=$(echo $paire | cut -d "-" -f 1)
-            if [ $injection == {params.run} ]; then
-                OUT_FOLDER={params.inputFolder}
-            else
-                OUT_FOLDER={params.inputFolder}/{params.run}
-            fi
-            sample=$(echo $paire | cut -d "-" -f 2)
-            barcode=$(echo $sample | cut -d "_" -f 1)
-            mkdir -p $OUT_FOLDER/$injection
-            mkdir -p $OUT_FOLDER/$injection/$sample/
-
-            if [ $paire == $firstCombinaison ]; then
-                mv {params.inputFolder}/{params.run}/blow5 $OUT_FOLDER/$injection/$sample/
-            else
-                ln -s $OUT_FOLDER/$injectionFirstElement/$sampleFirstElement/blow5 $OUT_FOLDER/$injection/$sample/blow5
-            fi
-        done
-        """
-
-rule mergeBlow5:
-    input:
-        blow5 = os.path.join(config["input_dir"], config["run"], config["combinaison"][0]["samples"], "blow5")
-    output:
-        expand(os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5"), mergedSamples = config["wildcards"]["mergedSamples"])
-    params:
-        parameters = config["slow5_merge"]["parameters"],
-        samples = [val["samples"] for val in config["combinaison"]],
-        blow5Folder = os.path.join(RES_FOLDER, "All", "blow5")
-    log:
-        os.path.join(LOG_PATH, "blow5/merged_" + config['combinaison'][0]['samples'].split("_")[0] + ".log") 
-    container:
-        CONTAINERS_PATH + config["slow5tools"]["sif"]   
-    shell:
-        """
-        firstSample=$(basename $(dirname {input.blow5}))
-        firstMergedSample=$(echo $firstSample | cut -d "_" -f 1)
-        slow5tools merge {params.parameters} -o {params.blow5Folder}/$firstMergedSample.blow5 {input.blow5} 2> {log}
-        for sample in {params.samples}
-        do
-            if ! [ $firstSample == $sample ];
-            then
-                mergedSample=$(echo $sample | cut -d "_" -f 1)
-                ln -s {params.blow5Folder}/$firstMergedSample.blow5 {params.blow5Folder}/$mergedSample.blow5
-            fi
-        done
-        """ 
-
-rule f5c_index:
-    input:
-        blow5 = os.path.join(RES_FOLDER, "All", "blow5", f"{config['combinaison'][0]['samples'].split('_')[0]}.blow5")
-    output:
-        expand(os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5.idx"), mergedSamples = config["wildcards"]["mergedSamples"])
-    params:
-        samples = [val["samples"].split("_")[0] for val in config["combinaison"]],
-        blow5Folder = os.path.join(RES_FOLDER, "All", "blow5"),
-        fastqFolder = os.path.join(RES_FOLDER, "All", "FASTQ"),
-        bin = config["f5c"]["bin"]
-    log:
-        os.path.join(LOG_PATH, "f5c/f5c_index_" + config['combinaison'][0]['samples'].split("_")[0] + ".log")
-    container:
-        CONTAINERS_PATH + config["f5c"]["sif"]
-    shell:
-        """
-        for sample in {params.samples}
-        do
-            {params.bin} index --slow5 {params.blow5Folder}/$sample.blow5 {params.fastqFolder}/$sample.fastq.gz 2> {log}
-        done
-        """   
-
 onstart:
     print("Launching NanoCliD analysis")
     if "email" in config.keys():

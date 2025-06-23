@@ -7,6 +7,7 @@ def concatSV(vcfs, outFile):
 	final = pd.DataFrame()
 	comments = []
 	callers = []
+	emptyFiles = []
 	for vcf in vcfs:
 		if subprocess.call(f"grep -cv '#' {vcf}", shell = True) != 1:
 			header = subprocess.check_output(f"grep '^##' {vcf}", shell = True).decode("utf-8").rstrip().split("\t")
@@ -16,12 +17,15 @@ def concatSV(vcfs, outFile):
 			df.columns = columns
 			final = pd.concat([df, final])
 			callers += [os.path.dirname(vcf).split("/")[-1]] * df.shape[0]
-	comments.append("\n")
+		else:
+			emptyFiles.append(vcf)
+	if len(comments) != 0:
+		comments.append("\n")
 	with open(outFile, "w") as fh:
 		fh.write("".join(comments))
-	final["Caller"] = callers
-	final.to_csv(outFile, sep = "\t", index = None, mode = "a")
-
+	if len(emptyFiles) != len(vcfs):
+		final["Caller"] = callers
+		final.to_csv(outFile, sep = "\t", index = None, mode = "a")
 
 if __name__ == "__main__":
 	parser = ArgumentParser(description="Concat SV vcfs")

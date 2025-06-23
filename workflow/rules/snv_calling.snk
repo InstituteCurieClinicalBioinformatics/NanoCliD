@@ -29,7 +29,7 @@ rule pepper:
 
 rule concatVcfsPepper:
     input:
-        expand(os.path.join(RES_FOLDER, "All", "SNV", "{{mergedSamples}}_{region}/{region}_done.txt"), region = getChrom(config["bed"], config["genomeFile"]))
+        expand(os.path.join(RES_FOLDER, "All", "SNV", "{{mergedSamples}}_{region}/{region}_done.txt"), region = getChrom(config["bed"], config["genomeFile"], os.path.join(config["output_dir"], config["run"])))
     output:
         vcf = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz"),
         tabix = os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.pepper.vcf.gz.tbi")
@@ -41,7 +41,7 @@ rule concatVcfsPepper:
         """
         vcfs=$(cat {input} | sort -Vu | grep -v "^$") && \
         if [[ -z ${{vcfs}} ]]; then
-        zgrep "#" "$(dirname {input[0]})"/intermediate_files/PEPPER_VARIANT_FULL.vcf.gz > "$(dirname {input[0]})"/pepper.vcf 
+        zgrep "#" "$(dirname {input[0]})"/PEPPER_VARIANT_FULL.vcf.gz > "$(dirname {input[0]})"/pepper.vcf 
 
         else
         bcftools concat ${{vcfs}} -o "$(dirname {input[0]})"/pepper.vcf
@@ -86,7 +86,7 @@ rule clair3:
         model_path = config["clair3"][f"model_path_{config['flowCellType']}"],
         parameters = config["clair3"]["parameters"],
         ref = config["genome"], 
-        bed = os.path.join("/tmp", "{chromosome}_clair3.bed"),
+        bed = os.path.join(config["output_dir"], config["run"], f"{os.environ['USER']}_{{chromosome}}_clair3.bed"),
         dirname = lambda wildcards, output: os.path.join(os.path.dirname(str(output)), f"clair3_{wildcards.chromosome}_tmp")
     threads: config["clair3"]["threads"]
     log:
@@ -96,19 +96,21 @@ rule clair3:
     shell:
         """
         run_clair3.sh --bam_fn={input.bam}  \
-           {params.parameters} \
-           --ref_fn={params.ref}  \
-           --threads={threads} \
-           --bed_fn={params.bed}  \
-           --model_path={params.model_path} \
-           --output={params.dirname} 2> {log} && \
-        mv {params.dirname}/merge_output.vcf.gz {output} && \
-        rm -fr {params.dirname}
+        {params.parameters} \
+        --ref_fn={params.ref}  \
+        --threads={threads} \
+        --bed_fn={params.bed}  \
+        --model_path={params.model_path} \
+        --output={params.dirname} 2> {log}
+
+        mv {params.dirname}/merge_output.vcf.gz {output}
+        rm -fr {params.dirname} 2> {log}
+        rm {params.bed} 2> {log}
         """
 
 rule clair3_concat:
     input:
-        expand(os.path.join(RES_FOLDER, "All", "SNV", "Clair3", "{{mergedSamples}}", "{chromosome}.clair3.vcf.gz"), chromosome = getChrom(config["bed"], config["genomeFile"], True))
+        expand(os.path.join(RES_FOLDER, "All", "SNV", "Clair3", "{{mergedSamples}}", "{chromosome}.clair3.vcf.gz"), chromosome = getChrom(config["bed"], config["genomeFile"], os.path.join(config["output_dir"], config["run"]), True))
     output:
         os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "VARIANTS", "{mergedSamples}.clair3.vcf.gz")
     log:
@@ -180,14 +182,14 @@ rule snpEff:
         tmpDir = lambda wildcards, output: os.path.dirname(str(output)),
         parameters = config["snpEff"]["parameters"],
         genome_version = config["genome_version"].split("_")[0],
-        dataDir = config["snpEff"]["dataDir"]
+        dataDir = config["snpEff"]["dataDir"][f'{config["genome_version"].split("_")[0]}']
     log:
         os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_snpEff.log")
     container:
-        CONTAINERS_PATH + config["snpEff"]["sif"]
+        CONTAINERS_PATH + config["bioInfoCliTools"]["sif"]
     shell:
         """
-        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/share/snpeff-4.3.1t-5/snpEff.jar eff {params.parameters} \
+        java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/bin/snpEff/snpEff.jar eff {params.parameters} \
         -dataDir {params.dataDir} \
         -noStats \
         {params.genome_version} {input.vcf} > {output} 2> {log}

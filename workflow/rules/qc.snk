@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import glob
 
+extension = ".tmp" if "ADAPTIVE" in config["template"] else ""
+
 module common:
     snakefile: f"{config['git_dir']}/workflow/rules/common.snk"
     config: config
@@ -21,9 +23,15 @@ rule createBedOffTarget:
         """
         if [[ ! -z {params.bed} ]];
             then
-            bedtools complement -i {params.bed} -g {input.genomeFile} | grep -v chrM > {output} 2> {log}
-            else
+            bedtools complement -i {params.bed} -g {input.genomeFile} > tmp 2> {log}
+            nbLines=$(wc -l tmp | cut -d ' ' -f 1)
+            if [ $nbLines -eq 0 ]; then
                 touch {output}
+            else
+                grep -v chrM tmp > {output} 2> {log}
+            fi
+        else
+            touch {output}
         fi
         """
 
@@ -127,3 +135,53 @@ rule concatOffAndOnQC:
         final = final.T
         final.index = [val[0] for val in final.index.tolist()]
         final.to_csv(output[0], sep = "\t")
+
+rule nanoPlot:
+    input:
+        bam = os.path.join(RES_FOLDER, "All", "Mapping", "{mergedSamples}.ontarget.bam"),
+        index = os.path.join(RES_FOLDER, "All", "Mapping", "{mergedSamples}.ontarget.bam.bai"),
+    output:
+        os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "QC", "NanoPlot", "{mergedSamples}", f"{{mergedSamples}}_NanoPlot-report.html{extension}")
+    threads: 8
+    params:
+        parameters = config["nanoplot"]["parameters"],
+        report = lambda wildcards, output: str(output).split(".tmp")[0]
+    log:
+        os.path.join(LOG_PATH, "qc", "{mergedSamples}_nanoplot.log")
+    container:
+        CONTAINERS_PATH + config["nanoplot"]["sif"]
+    shell:
+        """
+        NanoPlot \
+        -t {threads} \
+        {params.parameters} \
+        --bam {input.bam} \
+        -p {wildcards.mergedSamples}_ \
+        -o $(dirname {output}) 2> {log}
+
+        if [[ {output} == *".tmp"* ]]; then
+            mv {params.report} {output}
+        fi
+        """
+
+if "ADAPTIVE" in config["template"]:
+
+    rule addQCinNanoPlotReport:
+        input:
+            report = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "QC", "NanoPlot", "{mergedSamples}", "{mergedSamples}_NanoPlot-report.html.tmp"),
+            ontarget = os.path.join(RES_FOLDER, "All", "QC", "{mergedSamples}_qc_ontarget.tsv"),
+            offtarget = os.path.join(RES_FOLDER, "All", "QC", "{mergedSamples}_qc_offtarget.tsv")
+        output:
+            report = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "QC", "NanoPlot", "{mergedSamples}", "{mergedSamples}_NanoPlot-report.html")
+        params:
+            script = os.path.join(config["git_dir"], 'utils', config["nanoplot"]["script"]),
+        log:
+            os.path.join(LOG_PATH, "qc", "{mergedSamples}_addQCinNanoPlotReport.log")
+        shell:
+            """
+            python3 {params.script} \
+            -i {input.report} \
+            -q {input.ontarget} {input.offtarget} \
+            -s {wildcards.mergedSamples} 2> {log}
+            """
+            

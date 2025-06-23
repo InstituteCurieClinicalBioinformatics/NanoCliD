@@ -1,4 +1,5 @@
 backup/ANALYSIS/{run}/BAM/{mergedSamples}.bam
 backup/ANALYSIS/{run}/BAM/{mergedSamples}.bam.bai
+backup/ANALYSIS/{run}/QC/NanoPlot/{mergedSamples}/{mergedSamples}_NanoPlot-report.html
 backup/ANALYSIS/{mergedSamples}/CNV/{mergedSamples}_cnv_plot.pdf
 backup/ANALYSIS/{mergedSamples}/METHYLATION/{mergedSamples}.methylation_calls_frequency.tsv

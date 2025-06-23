@@ -1,66 +1,41 @@
 from utils.utils import *
 
-def getReportFile(wildcards):
-    return config["reportFiles"][wildcards.samples]
-
-def getFast5Dir(wildcards):
-    if hasattr(wildcards, "mergedSamples"):
-        return config["fast5Dir"][wildcards.mergedSamples]
-    return config["fast5Dir"][wildcards.samples]
-
-def getSubSampling(wildcards, outDir, extension):
-    path = {"bam" : os.path.join(outDir, "INJECTION", "SAMPLE", "Mapping", "SAMPLE.bam"), \
-    "fastq" : os.path.join(outDir, "INJECTION", "SAMPLE", "FASTQ", "SAMPLE.fastq.gz"), \
-    "blow5" : os.path.join(outDir, "INJECTION", "SAMPLE", "blow5"), \
-    "fast5" : os.path.join(outDir, "INJECTION", "SAMPLE", "fast5")}
-    files = []
-    if hasattr(wildcards, "mergedSamples"):
-        samplesToMerge = config["samplesToMerge"][wildcards.mergedSamples]
-        for injection in config["wildcards"]["injections"]:
-            for sample in config["fast5Dir"].keys():
-                if sample in samplesToMerge and injection in config["fast5Dir"][sample]:
-                    files.append(path[extension].replace("INJECTION", injection).replace("SAMPLE", sample))
-    else:
-        files.append(path[extension].replace("INJECTION", wildcards.injections).replace("SAMPLE", wildcards.samples))
-    return files
-
 include: f"{config['git_dir']}/workflow/rules/common.snk"
 
 module common:
     snakefile: f"{config['git_dir']}/workflow/rules/common.snk"
     config: config
 
-rule guppy:
+rule basecalling:
     input:
-        getFast5Dir
+        lambda wc: getFast5Dir(wc, fromBlow5 = config["fromBlow5"], extension = "fast5", config = config)
     output:
         fastq =  os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "FASTQ", "{samples}.fastq.gz"),
     params:
-        parameters = config["guppy"]["parameters"],
-        slow5tools = os.path.join(CONTAINERS_PATH, config["slow5tools"]["sif"]),
+        parameters_guppy = config["guppy"]["parameters_standalone"],
+        parameters_dorado = config["dorado"]["parameters"],
+        model_dorado = config["dorado"]["model"],
         fromBlow5 = config["fromBlow5"],
         fromPod5 = config["fromPod5"]
     log:
-        os.path.join(LOG_PATH, "baseCalling/guppy_{injections}_{samples}.log")
+        os.path.join(LOG_PATH, "baseCalling/{injections}_{samples}.log")
     threads: 1
+    container:
+        os.path.join(CONTAINERS_PATH, config["guppy"]["sif"]) if config["fromPod5"] == "no" else os.path.join(CONTAINERS_PATH, config["dorado"]["sif"])
     shell:
         """
-        BASE_CALLER=guppy_basecall_client
         INPUT_PATH={input}
         if [ {params.fromPod5} == "yes" ]; then
-            BASE_CALLER=ont_basecall_client
+            dorado basecaller {params.parameters_dorado} {params.model_dorado} $INPUT_PATH > {output.fastq} 2> {log}
+        else
+            /opt/ont-guppy/bin/guppy_basecaller {params.parameters_guppy} --input_path $INPUT_PATH --save_path $(dirname {output.fastq}) 2> {log}
+            find $(dirname {output.fastq})/pass/ -type f -name '*.fastq.gz' -exec cat {{}} > {output.fastq} \; 2> {log}
         fi
-        if [ {params.fromBlow5} == "yes" ]; then
-            singularity exec {params.slow5tools} slow5tools s2f -d $(dirname {input})/fast5 {input} 2> {log}
-            INPUT_PATH=$(dirname {input})/fast5
-        fi
-        $BASE_CALLER {params.parameters} --input_path $INPUT_PATH --save_path $(dirname {output.fastq}) 2> {log} &&
-        find $(dirname {output.fastq})/pass/ -type f -name '*.fastq.gz' -exec cat {{}} > {output.fastq} \; 2> {log}
         """
 
 rule concatenateFastq:
     input:
-        fastqs = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "fastq")
+        fastqs = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "fastq", config = config)
     output:
         fastq =  os.path.join(RES_FOLDER, "All", "FASTQ", "{mergedSamples}.fastq.gz")
     log:
@@ -76,40 +51,32 @@ rule concatenateFastq:
         fi
         """
 
-if config["fromPod5"] == "yes":
-    rule pod5Tofast5:
-        input:
-            getFast5Dir
-        output:
-            directory(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "fast5"))
-        log:
-            os.path.join(LOG_PATH, "pod5/pod5tofast5_{injections}_{samples}.log")
-        container:
-            CONTAINERS_PATH + config["pod5tools"]["sif"]
-        shell:
-            """
-            pod5 convert to_fast5 {input} --output {output} 2> {log}
-            """
-
-rule fast5Toblow5:
+rule convertToBlow5:
     input:
-        getFast5Dir if config["fromPod5"] == "no" else lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "fast5")
+        lambda wc: getFast5Dir(wc, fromBlow5 = config["fromBlow5"], extension = "fast5", config = config)
     output:
         blow5 = directory(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "blow5"))
     params:
-        injectionFolder = RES_FOLDER_INJECTION
+        injectionFolder = RES_FOLDER_INJECTION,
+        fromPod5 = config["fromPod5"],
+        slow5_parameters = config["slow5tools"]["parameters"],
+        bluecrab_parameters = config["bluecrab"]["parameters"],
     log:
-        os.path.join(LOG_PATH, "blow5/f2s_{injections}_{samples}.log") 
+        os.path.join(LOG_PATH, "blow5/{injections}_{samples}.log") 
     container:
-        CONTAINERS_PATH + config["slow5tools"]["sif"]   
+        os.path.join(CONTAINERS_PATH, config["slow5tools"]["sif"]) if config["fromPod5"] == "no" else os.path.join(CONTAINERS_PATH, config["bluecrab"]["sif"])
     shell:
         """
-        slow5tools f2s --to blow5 -d {params.injectionFolder}/{wildcards.injections}/{wildcards.samples}/blow5 {input} 2> {log}
+        if [ {params.fromPod5} == "yes" ]; then
+            blue-crab p2s {params.bluecrab_parameters} -d {params.injectionFolder}/{wildcards.injections}/{wildcards.samples}/blow5 {input} 2> {log}
+        else
+            slow5tools f2s {params.slow5_parameters} --to blow5 -d {params.injectionFolder}/{wildcards.injections}/{wildcards.samples}/blow5 {input} 2> {log}
+        fi
         """
 
 rule mergeBlow5:
     input:
-        blow5s = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "blow5")
+        blow5s = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "blow5", config = config)
     output:
         blow5 = os.path.join(RES_FOLDER, "All", "blow5", "{mergedSamples}.blow5")
     params:
@@ -146,7 +113,7 @@ rule minimap2:
     output:
         sam =  temp(os.path.join(RES_FOLDER_INJECTION, "{injections}", "{samples}", "{samples}.sam"))
     params:
-        report = getReportFile,
+        report = lambda wc: getReportFile(wc, config = config),
         mmi = config["minimap2"]["mmi"],
         parameters = config["minimap2"]["parameters"],
         cn = config["minimap2"]["cn"]
@@ -183,7 +150,7 @@ rule samtools:
 
 rule mergeBam:
     input:
-        bams = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "bam")
+        bams = lambda wc: getSubSampling(wc, outDir = RES_FOLDER_INJECTION, extension = "bam", config = config)
     output:
         bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam")
     params:

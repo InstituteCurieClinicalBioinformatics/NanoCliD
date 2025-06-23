@@ -4,6 +4,9 @@ import subprocess
 from argparse import ArgumentParser
 import pandas as pd
 import re
+import yaml
+import socket
+import traceback
 try:
    from utils.utils import getOutputs
 except:
@@ -16,16 +19,18 @@ except:
     curieNetwork = False
 
 class NanoClid:
+    _DEFAULT_P_DIR = {"abacus" : "/mnt/beegfs/EH/pipelines/prod/.p", "calcsub" : "/data/bioinfo-clinique-public/prod/.p", "standalone" : "/data/bioinfo-clinique-public/prod/.p"}
 
-    def __init__(self, inputFolder=None, bedDir=None, run=None, outDir=None, dryRun=None, genomeVersion=None, until=None, samples="", outTemplate=None, snpEffDir=None, copyToTransverse=None, copyToWorkspace=None, sampleSheet = None, refDir = None, hostName = None, snakemakeBin = None, email = "", profile = None):
+    def __init__(self, inputFolder=None, bedDir=None, bedFile=None, run=None, outDir=None, dryRun=None, genomeVersion=None, until=None, samples="", outTemplate=None, snpEffDir=None, copyToTransverse=None, copyToWorkspace=None, runOnCluster=None, transverseFolder = None, sampleSheet = None, refDir = None, hostName = None, snakemakeBin = None, email = "", profile = None, queue = None):
         self.inputFolder = inputFolder
         self.bedDir = bedDir
+        self.bedFile = bedFile
         self.run = run
         self.outDir = outDir
         self.dryRun = dryRun
         self.genomeVersion = genomeVersion
         self.until = until
-        self.samples = samples.split(",")
+        self.samplesToRun = samples.split(",")
         self.outTemplate = outTemplate
         self.gitDir = os.path.dirname(os.path.realpath(__file__))
         self.snpEffDir = snpEffDir
@@ -41,15 +46,19 @@ class NanoClid:
             self.refDir = refDir
         self.copyToTransverse = copyToTransverse
         self.copyToWorkspace = copyToWorkspace
+        self.runOnCluster = runOnCluster
+        self.transverseFolder = transverseFolder
         self.sampleSheet = sampleSheet
         self.analysis = None
         self.combinaison = "''"
         self.fastqConcatenated = False
         self.fromBlow5 = "'no'"
-        self.fromPod5 = "''"
+        self.fromFast5 = "'no'"
+        self.fromPod5 = "'yes'"
         self.hostName = hostName if hostName else ""
         self.email = email
-        if curieNetwork:
+        self.queue = queue
+        if curieNetwork and not self.email:
             self.email = "bioinfo-clinique@curie.fr"
 
     def __setConfigTemplate(self, gitDir, run, curieNetwork, profile):
@@ -66,9 +75,12 @@ class NanoClid:
             df[0] = "chr" + df[0]
             df.to_csv(bed, sep = "\t", index = None, header = False)
 
-    def parseSampleSheet(self, sampleSheet):
+    def parseSampleSheet(self, sampleSheet, bedFile):
         subprocess.call(f'mkdir -p {os.path.join(self.inputFolder, self.run, "archive")}', shell = True)
-        if len(glob.glob(f"{self.inputFolder}/{self.run}/archive/*bed")) != 0:
+        if bedFile:
+            subprocess.call(f"cp {bedFile} {self.inputFolder}/{self.run}/archive/", shell = True)
+            self.bed = f"{self.inputFolder}/{self.run}/archive/{os.path.basename(bedFile)}"
+        elif len(glob.glob(f"{self.inputFolder}/{self.run}/archive/*bed")) != 0:
             self.bed = glob.glob(f"{self.inputFolder}/{self.run}/archive/*bed")[0]
         else:
             code = subprocess.call(f'grep TargetBED {sampleSheet}', shell = True)
@@ -76,12 +88,12 @@ class NanoClid:
                 subprocess.call(f"touch {self.inputFolder}/{self.run}/archive/empty.bed", shell = True)
                 self.bed = f"{self.inputFolder}/{self.run}/archive/empty.bed"
             else:
-                if os.path.basename(sampleSheet) == "A000_samplesheet.csv":
+                if "A000" in os.path.basename(sampleSheet):
                     bed = os.path.join(self.gitDir, "data", "test.bed")
                 else:
                     bed = subprocess.check_output(f'grep TargetBED {sampleSheet}', shell=True).decode('utf-8').rstrip().split(',')[1]
                     if curieNetwork:
-                        bed = curieFunctions._getBed(bed)
+                        bed = curieFunctions._getBed(bed, os.getenv("USER"))
                     else:
                         bed = os.path.join(self.bedDir, bed)
                 subprocess.call(f"cp {bed} {self.inputFolder}/{self.run}/archive/", shell = True)
@@ -91,10 +103,9 @@ class NanoClid:
         if self.bed != f"{self.inputFolder}/{self.run}/archive/empty.bed":
             self.__checkBedIntegrity(self.bed)
         self.sequencer = ""
-        if "M" in self.run:
-            self.sequencer = "_mk1c"
         self.flowCellType = subprocess.check_output(f"grep FlowcellType {sampleSheet}", shell = True).decode("utf-8").rstrip().split(",")[1].lower()
         self.barcodingKits = subprocess.check_output(f"grep Assay {sampleSheet}", shell = True).decode("utf-8").rstrip().split(",")[1]
+        self.barcodingKits = self.barcodingKits.replace('.', '-')
         skipRows = subprocess.check_output(f'grep -n "\[Data\]" {sampleSheet}', shell = True).decode("utf-8").split(":")[0]
         sampleSheet = pd.read_csv(sampleSheet, sep  = ",", skiprows = int(skipRows), keep_default_na = False)
         sampleSheet = sampleSheet[sampleSheet["Index_ID"] != ""]
@@ -159,6 +170,7 @@ class NanoClid:
         self.samplesToMerge = {}
         self.samples = []
         samples = sorted(list(self.samplesPath.keys()))
+        samples = set(self.samplesToRun).intersection(samples) if self.samplesToRun != [""] else samples
         runDir = f"{self.inputFolder}" if self.analysis == "simpleInjection" else os.path.join(self.inputFolder ,self.run)
         if self.analysis == "simpleInjection":
             runDir = f"{self.inputFolder}"
@@ -173,7 +185,7 @@ class NanoClid:
                 fast5Dir = self.getFiles(os.path.join(runDir, (self.injections[i])), 'd', pattern, True)
                 fastqDir = [f for f in fast5Dir if "fastq" in f and not "fail" in f and not "skip" in f]
                 fast5Dir = [f for f in fast5Dir if extension in f and not "fail" in f and not "skip" in f]
-                if len(fast5Dir) == 0 and pattern == self.samplesPath[sample]: #if multiplexing and no fast5 with barcodeNb pattern found look for fast5 folder supposing demultiplexing is needed
+                if len(fast5Dir) == 0 and pattern == self.samplesPath[sample] and self.multiplexing: #if multiplexing and no fast5 with barcodeNb pattern found look for fast5 folder supposing demultiplexing is needed
                     fast5Dir = self.getFiles(os.path.join(runDir, (self.injections[i])), 'd', f'{extension}*', True)
                     fastqDir = [f for f in fast5Dir if "fastq" in f and not "fail" in f and not "skip" in f]
                     fast5Dir = [f for f in fast5Dir if extension in f and not "fail" in f and not "skip" in f]
@@ -209,9 +221,10 @@ class NanoClid:
 
     def __setDataPath(self):
         self.__setFast5Path("pod5")
-        self.fromPod5 = "'no'" if self.fast5Paths == {} else "'yes'"
         if self.fast5Paths == {} and self.fastqPaths == {}:
             self.__setFast5Path("fast5")
+            if self.fast5Paths != {}:
+                self.fromFast5 = "'yes'"
             if self.fast5Paths == {}:
                 self.__setFast5Path("blow5")
                 self.fromBlow5 = "'yes'"
@@ -243,44 +256,38 @@ class NanoClid:
             return key, value
         return "", ""
 
-    def loadConfig(self, yaml):
-        config = {}
-        lines = open(yaml, "r").readlines()
-        i = 0
-        while i <= len(lines) - 1:
-            key, value = self.parseLineConfig(lines[i])
-            if value != "":
-                config[key] = value
-                i += 1
-            elif key != "" and value == "":
-                config[key] = {}
-                i += 1
-                while i < len(lines) and self.parseLineConfig(lines[i])[1] != "":
-                    subKey, value = self.parseLineConfig(lines[i])
-                    config[key][subKey.strip()] = value
-                    i += 1
-            else:
-                i += 1
-        return config
+    def loadConfig(self, path):
+        with open(path, "r") as file:
+            configYaml = yaml.safe_load(file)
+        return configYaml
 
     def writeConfig(self, dico, path):
-        f = open(path, "w")
-        for key in dico.keys():
-            if type(dico[key]) != dict:
-                f.write(f"{key}: {dico[key]}\n")
-            else:
-                f.write(f'{key}: \n')
-                for subKey in dico[key].keys():
-                    f.write(f" {subKey}: {dico[key][subKey]}\n")
-            f.write("\n")
-        f.close()
+        if os.path.basename(path) == "config.yaml":
+            with open(path, "w") as file:
+                yaml.dump(dico, file, sort_keys = False)
+        else:
+            f = open(path, "w")
+            for key in dico.keys():
+                if type(dico[key]) != dict:
+                    f.write(f"{key}: {dico[key]}\n")
+                else:
+                    f.write(f'{key}: \n')
+                    for subKey in dico[key].keys():
+                        if dico[key][subKey] == "":
+                            f.write(f" {subKey}: ''\n")
+                        else:
+                            f.write(f" {subKey}: {dico[key][subKey]}\n")
+                f.write("\n")
+            f.close()
 
     def __updateConfig(self, config):
         config["analysis"] = self.analysis
         config["demultiplexing"] = self.demultiplexing
-        config["guppy"]["parameters"] = config["guppy"]["parameters"].replace("FLOWCELL", f"dna_{self.flowCellType}_e8.2_400bps_hac{self.sequencer}.cfg" if "r10" in self.flowCellType else f"dna_{self.flowCellType}_450bps_hac{self.sequencer}.cfg")
+        config["dorado"]["model"] = config["dorado"]["model"].replace("FLOWCELL", f"dna_{self.flowCellType}_e8.2_400bps_hac\@v5.0.0") if "r10" in self.flowCellType else config["dorado"]["model"].replace("FLOWCELL", f"dna_{self.flowCellType}_e8_hac\@v3.3")
+        config["guppy"]["parameters_standalone"] = config["guppy"]["parameters_standalone"].replace("FLOWCELL", f"dna_{self.flowCellType}_e8.2_400bps_hac{self.sequencer}.cfg" if "r10" in self.flowCellType else f"dna_{self.flowCellType}_450bps_hac{self.sequencer}.cfg")
         if self.demultiplexing:
-            config["guppy"]["parameters"] = f'{config["guppy"]["parameters"][1:-1]} --barcode_kits "{self.barcodingKits}"' #[1:-1] to remove quote
+            config["dorado"]["demux"] = f'--emit-fastq --kit-name "{self.barcodingKits}"'
+            config["guppy"]["parameters_standalone"] = f'{config["guppy"]["parameters_standalone"]} --barcode_kits "{self.barcodingKits}"' #[1:-1] to remove quote
         config["flowCellType"] = self.flowCellType.split(".")[0]
         config["bed"] = self.bed
         config["sampleSheet"] = self.sampleSheet
@@ -301,13 +308,17 @@ class NanoClid:
         config["template"] = self.outTemplate
         config["reportFiles"] = self.reportFiles
         config["fast5Dir"] = self.fast5Paths
-        config["snpEff"]["dataDir"] = self.snpEffDir
+        if not curieNetwork:
+            config["snpEff"]["dataDir"] = self.snpEffDir
         config["fromBlow5"] = self.fromBlow5
+        config["fromFast5"] = self.fromFast5
         config["fromPod5"] = self.fromPod5
         if self.email:
             config["email"] = self.email
         if curieNetwork:
-            config = curieFunctions._addSpecificCurieInfoToConfig(config, self.run, self.hostName, self.gitDir)
+            config = curieFunctions._addSpecificCurieInfoToConfig(config, self.run, self.hostName, self.gitDir, self.email, self.transverseFolder)
+        if self.runOnCluster:
+            config["runAllAnalysisOnCluster"] = "yes"
         return config
 
     def __createConfig(self, template, folder, run):
@@ -318,13 +329,23 @@ class NanoClid:
         self.writeConfig(config, os.path.join(folder, configFile))
         return os.path.join(folder, configFile)
 
-    def __updateProfile(self, profile, outDir, run):
+    def __updateProfile(self, profile, outDir, run, queue):
+        env = "prod" if "prod" in self.gitDir else "dev"
         profileType = profile.split("/")[-1]
         subprocess.call(f"cp -r {profile} {outDir}/{run}", shell=True)
         profileDico = self.loadConfig(f"{outDir}/{run}/{profileType}/config.yaml")
         profileDico["singularity-args"] = profileDico["singularity-args"].replace("GIT_DIR", self.gitDir)
-        profileDico["singularity-args"] = profileDico["singularity-args"].replace("REF_DIR", self.refDir)
+        if os.path.exists(self.refDir):
+            profileDico["singularity-args"] = profileDico["singularity-args"].replace("REF_DIR", self.refDir)
+        else:
+            profileDico["singularity-args"] = profileDico["singularity-args"].replace("REF_DIR,", "")
+        profileDico["singularity-args"] = profileDico["singularity-args"].replace("PDIR_VAR", NanoClid._DEFAULT_P_DIR[profileType])
         profileDico["singularity-prefix"] = profileDico["singularity-prefix"].replace("GIT_DIR", self.gitDir)
+        if queue:
+            idxQueue = [i for i in range(len(profileDico['default-resources'])) if 'partition' in profileDico['default-resources'][i]][0]
+            profileDico['default-resources'][idxQueue] = f'slurm_partition={queue}'
+        else:
+            profileDico["default-resources"] = ",".join(profileDico["default-resources"]).replace("ENV", env).split(",")
         if "cluster" in profileDico.keys():
             profileDico["cluster"] = profileDico["cluster"].replace("logs_cluster", f"{self.outDir}/{self.run}/logs_cluster")
         self.writeConfig(profileDico, f"{outDir}/{run}/{profileType}/config.yaml")
@@ -343,11 +364,7 @@ class NanoClid:
         demultiplexingRule = os.path.join(self.gitDir, "workflow/rules/demultiplexing.snk")
         if self.demultiplexing:
             cmdDemultiplexing = f"{snakemakeBin} -s {demultiplexingRule} --profile {profile} --configfile {configFile} -d {os.path.join(self.outDir, self.run)}"
-            cmd = f"{cmdDemultiplexing} -t && {cmd}"
-            if "standalone" in profile:
-                cmd = cmdDemultiplexing
-            if self.until == "guppy":
-                cmd = f"{cmdDemultiplexing}"
+            cmd = f"{cmdDemultiplexing} -t && {cmd} --rerun-triggers mtime"
         if self.until and "standalone" in profile:
             cmd = " ".join((cmd, f"-U {self.until}"))
         if dryRun:
@@ -364,8 +381,9 @@ class NanoClid:
         print(cmd)
         subprocess.call(f"{cmd}", shell=True)
 
-    def getFiles(self, path, kind, pattern, files=False):
-        find = subprocess.check_output(f"find -L {path} -type {kind} -name '{pattern}'", shell=True).decode("utf-8").rstrip().split("\n")
+    @staticmethod
+    def getFiles(path, kind, pattern, files=False):
+        find = subprocess.check_output(f"find -L {path} -type {kind} -name '{pattern}' 2> /dev/null", shell=True).decode("utf-8").rstrip().split("\n")
         if len(find) == 0:
             print(f"No files found in path {path} with pattern {pattern}")
             return ""
@@ -396,16 +414,18 @@ class NanoClid:
         return summaryFilesPath
 
     def _runNanoClid(self):
-        if not "standalone" in self.profile and curieNetwork:
-            curieFunctions._deleteOldRun(self.inputFolder)
+        if "abacus" in self.profile and curieNetwork:
+            try:
+                curieFunctions._deleteOldRun(self.inputFolder, self.run)
+            except:
+                pass #cas ou on lance avec un autre user qui n'a pas les droits pour supprimer un run deja existant
         if not self.sampleSheet and curieNetwork:
             self.sampleSheet = curieFunctions._getSampleSheet(self.run, self.inputFolder, self.loadConfig(self.configTemplate), self.loadConfig(os.path.join(self.profile, "config.yaml")), self.profile)
-        self.parseSampleSheet(self.sampleSheet)
+        self.parseSampleSheet(self.sampleSheet, self.bedFile)
         configFile = self.__createConfig(self.configTemplate, f"{self.outDir}/{self.run}", self.run)
-        profile = self.__updateProfile(self.profile, self.outDir, self.run)
+        profile = self.__updateProfile(self.profile, self.outDir, self.run, self.queue)
         if curieNetwork:
-            curieFunctions._recoverSymlink(profile, self.inputFolder, self.run)
-            curieFunctions.runSnakemake(self.snakemakeBin, os.path.join(self.gitDir, "workflow/Snakefile"), configFile, profile, self.dryRun, self.outDir, self.run, self.gitDir, self.fastqConcatenated, self.until, self.demultiplexing, self.copyToTransverse, self.copyToWorkspace)
+            curieFunctions.runSnakemake(self.snakemakeBin, os.path.join(self.gitDir, "workflow/Snakefile"), configFile, profile, self.dryRun, self.outDir, self.run, self.gitDir, self.fastqConcatenated, self.until, self.demultiplexing, self.copyToTransverse, self.copyToWorkspace, self.runOnCluster, self.fromBlow5, self.fromFast5)
         else:
             self.runSnakemake(self.snakemakeBin, os.path.join(self.gitDir, "workflow/Snakefile"), configFile, profile, self.dryRun)
 
@@ -413,28 +433,23 @@ class NanoClid:
         print(singularityFolder)
         subprocess.call(f"mkdir -p {singularityFolder}", shell = True)
         gitDir = os.path.dirname(os.path.realpath(__file__))
-        imagesPath = "http://xfer.curie.fr/get/moe5ZZ8PGPD/images.tar.gz"
-        nanovarPath = "http://xfer.curie.fr/get/Al1MrbPdC0C/nanovar.tar.gz"
+        imagesPath = "http://xfer.curie.fr/get/UIKMX88dwEl/nanoclid_images.tar.gz"
+        inputData = "http://xfer.curie.fr/get/MKLi26AVv84/input.tar.gz"
+        print("Downloading input data ...")
+        code = subprocess.call(f"wget -P {os.path.join(gitDir, 'data', 'input')}/ {inputData}", shell = True)
+        if code == 1:
+            raise ValueError(f"Download images from {inputData} failed. Please retry or contact us.")
+        print("Download input data OK")
         print("Downloading images ...")
         code = subprocess.call(f"wget -P {singularityFolder}/ {imagesPath}", shell = True)
         if code == 1:
             raise ValueError(f"Download images from {imagesPath} failed. Please retry or contact us.")
         print("Download images OK")
         print("Untar archive ...")
-        code = subprocess.call(f"tar -xvf {singularityFolder}/images.tar.gz -C {singularityFolder} && mv {singularityFolder}/images/* {singularityFolder} && rm -rf {singularityFolder}/images {singularityFolder}/images.tar.gz", shell=True)
+        code = subprocess.call(f"tar -xvf {singularityFolder}/nanoclid_images.tar.gz -C {singularityFolder} && mv {singularityFolder}/images/* {singularityFolder} && rm -rf {singularityFolder}/images {singularityFolder}/nanoclid_images.tar.gz", shell=True)
         if code == 1:
             raise ValueError(f"Untar images failed. Please check download integrity")
         print("Untar archive OK")
-        print("Download nanovar archive ...")
-        code = subprocess.call(f"wget -P {gitDir}/annotations/ {nanovarPath}", shell = True)
-        if code == 1:
-            raise ValueError(f"Download nanovar archive failed from {nanovarPath}. Please retry and contact us")
-        print("Download nanovar archive OK")
-        print("Untar nanovar folder ...")
-        code = subprocess.call(f"tar -xvf {gitDir}/annotations/nanovar.tar.gz -C {gitDir}/annotations/ && rm {gitDir}/annotations/nanovar.tar.gz", shell = True)
-        if code == 1:
-            raise ValueError(f"Untar nanovar folder failed. Please check git clone integrity. You should get git-lfs")
-        print("Untar nanovar folder OK")
         print("Setting python virtual env ...")
         code1 = subprocess.call(f"pip3 install virtualenv", shell=True)
         code2 = subprocess.call(f"mkdir -p {gitDir}/venv && python3 -m venv {gitDir}/venv", shell=True)
@@ -490,6 +505,7 @@ if __name__ == "__main__":
 
     run_parser = subs.add_parser("run", help='Run NanoClid')
     run_parser.add_argument("-b", "--bedDir", help="Path to folder containing bed files.", default = "")
+    run_parser.add_argument("--bedFile", help="Path to bed file.", default = "")
     run_parser.add_argument("-B", "--snakemakeBin", help="Path to snakemake bin.")
     run_parser.add_argument("-c", "--noCopyToTransverse", action='store_false', help="Do not copy results to transverse. Only for curie network.")
     run_parser.add_argument("-D", "--snpEffDir", help="Folder containing snpEff annotation files.",  default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'annotations/data'))
@@ -500,11 +516,14 @@ if __name__ == "__main__":
     run_parser.add_argument("-n", "--dryRun", action='store_true', help="Run nanoclid in dry run mode.")
     run_parser.add_argument("-O", "--outDir", help="Path to output folder.")
     run_parser.add_argument("-p", "--profile", help="Profile to use to launch NanoCliD. Must be standalone|calcsub|abacus")
+    run_parser.add_argument("-q", "--queue", help="Queue to use for cluster launch")
+    run_parser.add_argument("--noRunAllAnalysisOnCluster", action='store_false', help="Do not run on cluster. Only for curie network.")
     run_parser.add_argument("-r", "--runID", required = True, help="runID")
     run_parser.add_argument("-R", "--refDir", help="Ref dir containing genome annotations and reference files.", default="")
     run_parser.add_argument("-s", "--samples", help="Only run analysis on these samples. Must be comma separated.", default="")
     run_parser.add_argument("-S", "--samplesheet", help="Path to the samplesheet.")
     run_parser.add_argument("-T", "--outputTemplate", help="Path to the output template.", default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'templates', 'externe', 'ADAPTIVE.template'))
+    run_parser.add_argument("-t", "--transverseFolder", help="Path to transverse folder.")
     run_parser.add_argument("-U", "--until", help="Specify until which rule you want to run the workflow", default="")
     run_parser.add_argument("-w", "--noCopyToWorkspace", action='store_false', help="Do not copy results to workspace. Only for curie network")
 
@@ -519,5 +538,19 @@ if __name__ == "__main__":
     if args.command == "run":
         if not args.outDir:
             args.outDir = args.inputFolder
-        nanoclid = NanoClid(args.inputFolder, args.bedDir, args.runID, args.outDir, args.dryRun, args.genomeVersion, args.until, args.samples, args.outputTemplate, args.snpEffDir, args.noCopyToTransverse, args.noCopyToWorkspace, args.samplesheet, args.refDir, args.hostName, args.snakemakeBin, args.email, args.profile)
-        nanoclid._runNanoClid()
+        try:
+            nanoclid = NanoClid(args.inputFolder, args.bedDir, args.bedFile, args.runID, args.outDir, args.dryRun, args.genomeVersion, args.until, args.samples, args.outputTemplate, args.snpEffDir, args.noCopyToTransverse, args.noCopyToWorkspace, args.noRunAllAnalysisOnCluster, args.transverseFolder, args.samplesheet, args.refDir, args.hostName, args.snakemakeBin, args.email, args.profile, args.queue)
+            nanoclid._runNanoClid()
+        except Exception as e:
+            with open(os.path.join(nanoclid.outDir, nanoclid.run, 'errorLaunching.txt'), 'w') as f:
+                f.write(str(e))
+                f.write(traceback.format_exc())
+            profile = nanoclid.loadConfig(os.path.join(nanoclid.profile, "config.yaml"))
+            containersPath = profile["singularity-prefix"]
+            config = nanoclid.loadConfig(nanoclid.configTemplate)
+            config["email"] = "bioinfo-clinique@curie.fr"
+            config["errorMail"]["content"] = traceback.format_exc()
+            config["errorMail"]["subject"] = config["errorMail"]["subject"][1:-1] #remove ''
+            from utils.utils import sendMail
+            sendMail(config, containersPath, curieNetwork, "onerror", os.path.join(nanoclid.outDir, nanoclid.run, 'errorLaunching.txt'))
+

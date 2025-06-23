@@ -2,6 +2,7 @@ import subprocess
 import pandas as pd
 from argparse import ArgumentParser
 import os
+import gzip
 import re
 import math
 
@@ -41,9 +42,12 @@ def computeQC(bamStatFile, summaryFile, regionFile, outFile, bed, wildcard):
     "Couverture moyenne", \
     "Pourcentage de région enrichie à plus de 10X"]
     dico = {}
-    dico[wildcard] = parseBamStats(bamStatFile)
-    dico[wildcard] += parseMosDepthSummary(summaryFile, bed)
-    dico[wildcard] += parseMosDepthRegion(regionFile, bed)
+    if len(gzip.open(regionFile, 'rb').readlines()) == 0:
+        dico[wildcard] = ["NA", "NA", "NA", "NA"]
+    else:
+        dico[wildcard] = parseBamStats(bamStatFile)
+        dico[wildcard] += parseMosDepthSummary(summaryFile, bed)
+        dico[wildcard] += parseMosDepthRegion(regionFile, bed)
     qc = pd.DataFrame(dico)
     qc.index = indexes
     qc.to_csv(outFile, sep="\t")

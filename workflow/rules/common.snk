@@ -108,10 +108,12 @@ rule subSampleBam:
     container:
         CONTAINERS_PATH + config["bedtools"]["sif"]
     shell:
-        """if [[ ! -z {params.bed} ]];
-            then
-                bedtools intersect -abam {input.bam} -b {params.bed} > {output.bam} 2> {log}
-            else
-                ln -s {input.bam} {output.bam} 2> {log}
-            fi
+        """
+        nbLines=$(wc -l {params.bed} | cut -d ' ' -f 1)
+        if [ $nbLines -gt 0 ];
+        then
+            bedtools intersect -abam {input.bam} -b {params.bed} > {output.bam} 2> {log}
+        else
+            ln -s {input.bam} {output.bam} 2> {log}
+        fi
         """

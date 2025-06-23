@@ -19,29 +19,29 @@ rule cuteSV:
            --sample '{wildcards.mergedSamples}.cuteSV' {input.bam} {params.ref} {output} {params.dirname} 2> {log}
         """
 
-rule nanovar:
-    input:
-        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
-        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
-    output:
-        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.nanovar.pass.vcf")
-    params:
-        parameters = config["nanovar"]["parameters"],
-        genome_version = config["genome_version"],
-        genome = config["genome"],
-        dirname = lambda wildcards, output: os.path.dirname(str(output))
-    threads: config["nanovar"]["threads"]
-    log:
-        os.path.join(LOG_PATH, "calling/SV", "{mergedSamples}_nanovar.log")
-    container:
-        CONTAINERS_PATH + config["nanovar"]["sif"]
-    shell:
-        """
-        nanovar {params.parameters} --threads {threads} \
-        --filter_bed {params.genome_version} {input.bam} {params.genome} {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}/ 2> {log}
-        mv {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}/$(basename {output}) {output}
-        rm -rf {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}
-        """
+# rule nanovar:
+#     input:
+#         bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+#         index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
+#     output:
+#         os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.nanovar.pass.vcf")
+#     params:
+#         parameters = config["nanovar"]["parameters"],
+#         genome_version = config["genome_version"],
+#         genome = config["genome"],
+#         dirname = lambda wildcards, output: os.path.dirname(str(output))
+#     threads: config["nanovar"]["threads"]
+#     log:
+#         os.path.join(LOG_PATH, "calling/SV", "{mergedSamples}_nanovar.log")
+#     container:
+#         CONTAINERS_PATH + config["nanovar"]["sif"]
+#     shell:
+#         """
+#         nanovar {params.parameters} --threads {threads} \
+#         --filter_bed {params.genome_version} {input.bam} {params.genome} {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}/ 2> {log}
+#         mv {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}/$(basename {output}) {output}
+#         rm -rf {params.dirname}/tmp_{rule}_{wildcards.mergedSamples}
+#         """
 
 rule sniffles:
     input:
@@ -86,7 +86,6 @@ rule concatSV:
     input:
         os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.sniffles.vcf"),
         os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.svim.vcf"),
-        os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.nanovar.pass.vcf"),
         os.path.join(RES_FOLDER, "backup", "ANALYSIS", "{mergedSamples}", "SV", "{mergedSamples}.cuteSV.vcf")
     output:
         temp(os.path.join(RES_FOLDER, "All", "SV", "{mergedSamples}.merged.vcf"))
@@ -115,7 +114,12 @@ rule AnnotSV:
         CONTAINERS_PATH + config["annotSV"]["sif"]
     shell:
         """
-        /Annot/AnnotSV/bin/AnnotSV -Svinputfile {input} {params.parameters} -outputDir {params.dirname} 2> {log}
+        nbLines=$(wc -l {input})
+        if [ $nbLines -eq 0 ]; then
+            touch {output} 2> {log}
+        else
+            /Annot/AnnotSV/bin/AnnotSV -Svinputfile {input} {params.parameters} -outputDir {params.dirname} 2> {log}
+        fi
         """
 
 rule makeTableReport:

@@ -69,11 +69,6 @@ cuteSV:
   parameters: " --min_support 2 --min_size 50 --max_cluster_bias_INS 100 --diff_ratio_merging_INS 0.3 --max_cluster_bias_DEL 100 --diff_ratio_merging_DEL 0.3 --report_readid"
   threads: 24
 
-nanovar:
-  sif: "nanovar.sif"
-  parameters: "--data_type ont --minlen 50"
-  threads: 8 
-
 sniffles:
   sif: "sniffles.sif"
   parameters: "--minsupport 2 --minsvlen 50 --output-rnames --phase --non-germline"
@@ -126,10 +121,10 @@ snpEff:
 cnv:
   deeptoolssif: "deeptools.sif"
   bigwigsif: "bigwig.sif"
+  cnvfrombamsif: "cnv_from_bam.sif"
   script: "cnv_gc.R"
   threads: 8
   effectiveGenomeSize: 2864785220 
-  binSize: 1000
   brain_bed_5mb: "brain_genes_flanking_5Mb_hg19.bed"
   brain_bed: "brain_genes_hg19.bed"
   genome_subsampling: "hg19_subsampling.fa"

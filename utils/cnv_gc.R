@@ -5,20 +5,27 @@ amp_file <-  args[1] ; stopifnot(!is.na(amp_file))
 bam_path <- args[2] ; stopifnot(!is.na(bam_path))
 output_dir <- args[3] ; stopifnot(!is.na(output_dir))
 bedfile <- args[4] ; stopifnot(!is.na(bedfile))
-bin <- as.numeric(args[5]) ; stopifnot(!is.na(bin))
-ref_genome <- args[6] ; stopifnot(!is.na(ref_genome))
-assembly <- args[7] ; stopifnot(!is.na(assembly))
-target_file <- args[8]; stopifnot(!is.na(target_file))
-name <- ifelse(is.na(args[9]),"sample",args[9])
-ploidy <- ifelse(is.na(args[10]),2,as.numeric(args[10])) 
-chr_list <- args[11] #17 or 17,18 by example
+annotations_dir <- args[5] ; stopifnot(!is.na(bedfile))
+bin <- as.numeric(args[6]) ; stopifnot(!is.na(bin))
+ref_genome <- args[7] ; stopifnot(!is.na(ref_genome))
+assembly <- args[8] ; stopifnot(!is.na(assembly))
+target_file <- args[9]; stopifnot(!is.na(target_file))
+name <- ifelse(is.na(args[10]),"sample",args[10])
+ploidy <- ifelse(is.na(args[11]),2,as.numeric(args[11])) 
+chr_list <- args[12] #17 or 17,18 by example
 
 library("BiocManager")
 library("ChIPpeakAnno")
 library("ACE")
 library("GenomicRanges")
 library("QDNAseq")
-library("QDNAseq.hg19")
+if (assembly == "hg19"){
+    library("QDNAseq.hg19")
+} else if (assembly == "hg38"){
+    library("QDNAseq.hg38")
+} else{
+    stop(paste('There is no bin annotation for ', assembly, ' assembly', sep = ""))
+}
 library("Rsamtools")
 library("ggplot2")
 library("plyr")
@@ -130,7 +137,7 @@ nano_cnvplot <- function(template, bedGR, cnv_conf,cellularity,ploidy,title,type
             scale_color_manual(values=c(gene_alter_color)) +
             geom_vline(xintercept=template[which(template$chrcol==2),"bin"],col=gene_alter_color["2"],alpha=0.4) +
             geom_vline(xintercept=template[which(template$chrcol==3),"bin"],col=gene_alter_color["3"],alpha=0.4)+
-            ggtitle(paste(title," (cellularity=",cellularity,", ploidy=",ploidy,")",sep=""))
+            ggtitle(paste(title," (cellularity=",cellularity,", ploidy=",ploidy,")",", bin size=",bin / 1000," kpb",sep=""))
 
     # genes, plot at the average of genes points the label
     template$index_lab <- as.numeric(as.character(mapvalues(template$Genes,names(round(tapply(template$bin,template$Genes,median))),round(tapply(template$bin,template$Genes,median)))))
@@ -206,7 +213,11 @@ readlength_plot <- ggplot(sample, aes(x=readlength)) +
 ggsave(plot=readlength_plot,filename=file.path(output_dir, paste0(name, "_readlength.pdf")), width=3, height=3)
 
 ## genomic profile
-bins <- getBinAnnotations(binSize = bin, genome = assembly)
+if (bin %in% c(2500000, 5000000)){
+    bins <- readRDS(paste(annotations_dir, "/QDNAseq.hg19.", bin / 1000, "kbp.SR50.rds", sep = ""))
+}else{
+    bins <- getBinAnnotations(binSize = bin / 1000, genome = assembly)
+}
 
 readCounts <- binReadCounts(bins, bamfiles = bam_path)
 readCountsFiltered <- applyFilters(readCounts,residual = TRUE, blacklist = TRUE,chromosomes="Y")
