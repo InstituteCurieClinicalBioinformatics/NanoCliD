@@ -93,7 +93,7 @@ class NanoClid:
                 else:
                     bed = subprocess.check_output(f'grep TargetBED {sampleSheet}', shell=True).decode('utf-8').rstrip().split(',')[1]
                     if curieNetwork:
-                        bed = curieFunctions._getBed(bed, os.getenv("USER"))
+                        bed = curieFunctions._getBed(bed, os.getenv("USER"), self.genomeVersion, self.run)
                     else:
                         bed = os.path.join(self.bedDir, bed)
                 subprocess.call(f"cp {bed} {self.inputFolder}/{self.run}/archive/", shell = True)
@@ -433,23 +433,28 @@ class NanoClid:
         print(singularityFolder)
         subprocess.call(f"mkdir -p {singularityFolder}", shell = True)
         gitDir = os.path.dirname(os.path.realpath(__file__))
-        imagesPath = "http://xfer.curie.fr/get/UIKMX88dwEl/nanoclid_images.tar.gz"
-        inputData = "http://xfer.curie.fr/get/MKLi26AVv84/input.tar.gz"
-        print("Downloading input data ...")
-        code = subprocess.call(f"wget -P {os.path.join(gitDir, 'data', 'input')}/ {inputData}", shell = True)
-        if code == 1:
-            raise ValueError(f"Download images from {inputData} failed. Please retry or contact us.")
-        print("Download input data OK")
+        imagesPath = "http://xfer.curie.fr/get/moe5ZZ8PGPD/images.tar.gz"
+        nanovarPath = "http://xfer.curie.fr/get/Al1MrbPdC0C/nanovar.tar.gz"
         print("Downloading images ...")
         code = subprocess.call(f"wget -P {singularityFolder}/ {imagesPath}", shell = True)
         if code == 1:
             raise ValueError(f"Download images from {imagesPath} failed. Please retry or contact us.")
         print("Download images OK")
         print("Untar archive ...")
-        code = subprocess.call(f"tar -xvf {singularityFolder}/nanoclid_images.tar.gz -C {singularityFolder} && mv {singularityFolder}/images/* {singularityFolder} && rm -rf {singularityFolder}/images {singularityFolder}/nanoclid_images.tar.gz", shell=True)
+        code = subprocess.call(f"tar -xvf {singularityFolder}/images.tar.gz -C {singularityFolder} && mv {singularityFolder}/images/* {singularityFolder} && rm -rf {singularityFolder}/images {singularityFolder}/images.tar.gz", shell=True)
         if code == 1:
             raise ValueError(f"Untar images failed. Please check download integrity")
         print("Untar archive OK")
+        print("Download nanovar archive ...")
+        code = subprocess.call(f"wget -P {gitDir}/annotations/ {nanovarPath}", shell = True)
+        if code == 1:
+            raise ValueError(f"Download nanovar archive failed from {nanovarPath}. Please retry and contact us")
+        print("Download nanovar archive OK")
+        print("Untar nanovar folder ...")
+        code = subprocess.call(f"tar -xvf {gitDir}/annotations/nanovar.tar.gz -C {gitDir}/annotations/ && rm {gitDir}/annotations/nanovar.tar.gz", shell = True)
+        if code == 1:
+            raise ValueError(f"Untar nanovar folder failed. Please check git clone integrity. You should get git-lfs")
+        print("Untar nanovar folder OK")
         print("Setting python virtual env ...")
         code1 = subprocess.call(f"pip3 install virtualenv", shell=True)
         code2 = subprocess.call(f"mkdir -p {gitDir}/venv && python3 -m venv {gitDir}/venv", shell=True)
@@ -548,7 +553,7 @@ if __name__ == "__main__":
             profile = nanoclid.loadConfig(os.path.join(nanoclid.profile, "config.yaml"))
             containersPath = profile["singularity-prefix"]
             config = nanoclid.loadConfig(nanoclid.configTemplate)
-            config["email"] = "bioinfo-clinique@curie.fr"
+            config["email"] = args.email
             config["errorMail"]["content"] = traceback.format_exc()
             config["errorMail"]["subject"] = config["errorMail"]["subject"][1:-1] #remove ''
             from utils.utils import sendMail

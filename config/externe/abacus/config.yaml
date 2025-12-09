@@ -31,6 +31,10 @@ pod5tools:
 slow5tools:
   sif: "slow5.sif"
 
+bluecrab:
+  sif: "bluecrab_v03.sif"
+  parameters: "-p 12"
+
 slow5_merge:
   parameters: "-t 24"
 

@@ -246,7 +246,7 @@ bed[,1] <- gsub("X","23",bed[,1])
 
 ## plot + tab
 
-title <-  copyNumbersSegmented@phenoData@data[sample_nb,"name"]
+title <- name
 
 template <- objectsampletotemplate(copyNumbersSegmented, sample_nb)
 

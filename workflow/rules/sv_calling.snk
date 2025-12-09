@@ -114,7 +114,7 @@ rule AnnotSV:
         CONTAINERS_PATH + config["annotSV"]["sif"]
     shell:
         """
-        nbLines=$(wc -l {input})
+        nbLines=$(wc -l {input} | cut -d ' ' -f 1)
         if [ $nbLines -eq 0 ]; then
             touch {output} 2> {log}
         else

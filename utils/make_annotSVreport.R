@@ -70,5 +70,5 @@ if (dim(annotSV)[1] != 0){
             quote = FALSE)
 
 }else{
-    write.table(annotSV, file = output.path, sep = "\t")
+    write.table(annotSV, file = output.path, row.names = FALSE, quote = FALSE, sep = "\t")
 }

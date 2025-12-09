@@ -1,9 +1,35 @@
 from utils.utils import *
 
-rule cnvFromBam:
+rule subSampleBamForQDNA:
     input:
+        qc = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "QC", config["run"] + "_qc.tsv"),
         bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
         index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai")
+    output:
+        bam = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam")),
+        index = temp(os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam.bai"))
+    params:
+        ratio = lambda wc: getSubSamplingRatio(qcFile = rules.subSampleBamForQDNA.input.qc)
+    threads: 8
+    log:
+        os.path.join(LOG_PATH, "calling/CNV", "{mergedSamples}_subSampleBamForQDNA.log")
+    container:
+        CONTAINERS_PATH + config["samtools_sort"]["sif"]
+    shell:
+        """
+        if [ {params.ratio} -eq 1 ]; then
+            ln -s {input.bam} {output.bam}
+            ln -s {input.index} {output.index}
+        else
+            samtools view -@ {threads} --subsample {params.ratio} -bh -o {output.bam} {input.bam} 2> {log}
+            samtools index -@ {threads} {output.bam} 2>> {log}
+        fi
+        """
+
+rule cnvFromBam:
+    input:
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam.bai")
     output:
         bin_width = os.path.join(RES_FOLDER, "backup", "All", "{mergedSamples}", "CNV_FROM_BAM", "{mergedSamples}.txt")
     params:
@@ -26,8 +52,8 @@ rule cnvFromBam:
 
 rule bamCoverage:
     input:
-        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
-        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam.bai"),
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam"),
+        index = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam.bai"),
         bin_size = os.path.join(RES_FOLDER, "backup", "All", "{mergedSamples}", "CNV_FROM_BAM", "{mergedSamples}.txt")
     output:
         temp(os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.bw"))
@@ -69,7 +95,7 @@ rule bam2bigwig:
 
 rule copyNumber:
     input:
-        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}.bam"),
+        bam = os.path.join(RES_FOLDER, "backup", "ANALYSIS", config["run"], "BAM", "{mergedSamples}_qdnaseq.bam"),
         tab = os.path.join(RES_FOLDER, "All", "CNV", "{mergedSamples}.tab"),
         bin_size = os.path.join(RES_FOLDER, "backup", "All", "{mergedSamples}", "CNV_FROM_BAM", "{mergedSamples}.txt")
     output:

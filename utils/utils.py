@@ -2,6 +2,8 @@ import subprocess
 import os
 import glob
 import pandas as pd
+import re
+from collections import defaultdict
 from snakemake.io import expand
 from itertools import product
 from nanoclid import NanoClid
@@ -80,6 +82,71 @@ def getChrom(bed, genomeFile, outFolder, split=False):
                 df[df[0] == chromosome].to_csv(f"{outFolder}/{os.environ['USER']}_{chromosome}_clair3.bed", sep = "\t", header = False, index = None)
     return chromosomes
 
+########################START FUNCTIONS TO WRITE ERROR MAIL#####################################
+
+def extract_rule_lines(start_idx, lines, pattern):
+    while not re.findall(f'{pattern}', lines[start_idx]):
+        start_idx += 1
+    else:
+        return start_idx
+
+def extract_wildcards(lines):
+    wildcards = [line for line in lines if "wildcards" in line]
+    if len(wildcards) > 0:
+        wildcards = wildcards[0].split(": ")[1:]
+        wildcards = wildcards[0].split(', ')
+        for i,wildcard in enumerate(wildcards):
+            if i == 0: 
+                concat_wildcards = wildcard
+            else:
+                concat_wildcards = f'{concat_wildcards},{wildcard}'
+    else:
+        concat_wildcards = ""
+    return concat_wildcards
+
+def parse_rule_lines(lines, rules_dico):
+    ruleName = lines[0][:-1].split(" ")[-1] #[0][:-1] to remove :
+    log = [line for line in lines if "log" in line]
+    log = re.findall(r'/.*\.log', log[0])[0]
+    rules_dico[ruleName].append(log)
+    concat_wildcards = extract_wildcards(lines)
+    rules_dico[ruleName].append(concat_wildcards)
+    return rules_dico
+
+def write_email_error(rules_dico):
+    content = "Erreurs rencontrees pour les rules suivantes :\n\n"
+    for rule_name in sorted(rules_dico.keys()):
+        content += f"{rule_name} :\n"
+        log = rules_dico[rule_name][0]
+        log_cluster_dir = log.split("logs")[0]
+        wildcards= rules_dico[rule_name][1]
+        log_cluster = f'{log_cluster_dir}/logs_cluster/{os.environ["USER"]}_{rule_name}_{wildcards}.cluster'
+        content += f"\t- Logs associes : {log}\n\t{log_cluster}\n\n"
+        content += "-" * 50
+        content += "\n\n"
+    return content
+
+def get_rules_in_error_infos(snakemake_log):
+    with open(snakemake_log, 'r') as log:
+        lines = log.read().split("\n")
+        rules_dico = defaultdict(list)
+        rules_failed_dico = defaultdict(list)
+        not_submitted_jobs = 0
+        for i in range(len(lines)):
+            if re.findall(r'^rule', lines[i]):
+                rules_lines = lines[i:extract_rule_lines(i, lines, 'log: ')+4]
+                rules_dico = parse_rule_lines(rules_lines, rules_dico)
+            if re.findall(r'error in rule', lines[i], flags = re.IGNORECASE):
+                rules_failed_lines = lines[i:extract_rule_lines(i, lines, 'log: ')+4]
+                rules_failed_dico = parse_rule_lines(rules_failed_lines, rules_failed_dico)
+            if re.findall(r'Error submitting jobscript', lines[i], flags = re.IGNORECASE):
+                not_submitted_jobs += 1
+        if not_submitted_jobs > 0:
+            return f"Erreur lors de la soumission pour tous les jobs.\nVérifiez la queue et les arguments passes au mot clef cluster dans le profile ou que le user a bien acces a la queue.\n\n\nCMD : {cmd_snk}"
+        return write_email_error(rules_dico)
+
+
+# fonction nanoclid native
 def sendMail(config, containersPath, curieNetwork, handler, log=None):
     if handler == "onstart":
         if curieNetwork:
@@ -99,6 +166,7 @@ def sendMail(config, containersPath, curieNetwork, handler, log=None):
             cmd = f"""echo | mail -s "[NanoCliD] Run {config['run']} started" {config['email']}"""
     else:
         if curieNetwork:
+            content = get_rules_in_error_infos(log) if not "errorLaunching.txt" in log else config['errorMail']['content']
             cmd = f"""export SINGULARITYENV_PDIR={config["workspace"]['pDir']} && singularity exec \
             -B {os.path.dirname(config["workspace"]["pDir"])} \
             --no-home \
@@ -108,12 +176,14 @@ def sendMail(config, containersPath, curieNetwork, handler, log=None):
             /usr/local/code3/curie/SendMail.py \
             -a 1 \
             -t {config['email']} \
-            -s '{config['errorMail']['subject']}' \
-            -c '{config['errorMail']['content']}' \
+            -s 'Error in Run {config['run']}' \
+            -c '{content}' \
             --custom 1"""
         else:
             cmd = f'mail -s "An error occured for NanoCliD" {config["email"]} < {log}'
     subprocess.call(cmd, shell = True)
+
+########################END FUNCTIONS TO WRITE ERROR MAIL#####################################
 
 #onlyOnePath -> si on est en multiplex, les samples ont tous le meme folder de pod5/fast5, donc on ne renvoie qu'un seul dossier par injection
 def getFast5Dir(wildcards, fromBlow5=None, extension=None, onlyOnePath=None, config=None):
@@ -151,6 +221,8 @@ def getSubSampling(wildcards, outDir, extension, config):
 def concatFastq(inputFolder, run, injections, samples, outDir):
     folders = NanoClid.getFiles(os.path.join(inputFolder, run), "d", "fastq_pass")
     if folders != "":
+        if isinstance(folders, str):
+            folders = [folders]
         for folder in folders:
             for sample in samples:
                 nb = sample.split("RB")[-1].split("_")[0]
@@ -168,3 +240,11 @@ def getClosestBin(cnvFromBamBin):
         cnvFromBamBin = int(cnvFromBamBin.read())
     diffList = [abs(cnvFromBamBin-val) for val in binList]
     return binList[diffList.index(min(diffList))]    
+
+def getSubSamplingRatio(qcFile):
+    df = pd.read_csv(qcFile, sep = "\t", index_col = 0)
+    meanCov = df.at["OnTarget", "Couverture moyenne"]
+    covTarget = 30
+    if meanCov > covTarget:
+        return round(covTarget / meanCov, 2)
+    return 1
