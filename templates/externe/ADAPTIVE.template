@@ -3,7 +3,6 @@ backup/ANALYSIS/{run}/BAM/{mergedSamples}.bam.bai
 backup/ANALYSIS/{run}/QC/{run}_qc.tsv
 backup/ANALYSIS/{run}/QC/NanoPlot/{mergedSamples}/{mergedSamples}_NanoPlot-report.html
 backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.cuteSV.vcf
-backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.nanovar.pass.vcf
 backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.sniffles.vcf
 backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.svim.vcf
 backup/ANALYSIS/{mergedSamples}/SV/{mergedSamples}.annotSV.tsv

@@ -10,13 +10,19 @@ genomeFile: ""
 containers_path: ""
 
 guppy:
-  parameters: "--chunks_per_runner 512 --gpu_runners_per_device 128 -q 0 --min_qscore 7 -c FLOWCELL --compress_fastq --disable_pings --recursive --port /tmp/.guppy/5555"
+  parameters_standalone: "--chunks_per_runner 512 --gpu_runners_per_device 128 -q 0 --min_qscore 7 -c FLOWCELL --compress_fastq --disable_pings --recursive -x cuda:all"
+  sif: "guppy_6.5.7.sif"
+
+dorado:
+  parameters: "--emit-fastq --min-qscore 7 -x cuda:all"
+  model: "/usr/local/bin/FLOWCELL"
+  sif: "dorado_v0.7.2.sif"
 
 minimap2:
   mmi: ""
   parameters: "-ax map-ont --MD"
   sif: "minimap2.sif"
-  cn: "Externe"
+  cn: "Institut_Curie"
 
 samtools_sort:
   parameters: "-@ 8 -O BAM"
@@ -30,9 +36,10 @@ pod5tools:
 
 slow5tools:
   sif: "slow5.sif"
+  parameters: "-p 24"
 
 bluecrab:
-  sif: "bluecrab_v03.sif"
+  sif: "bluecrab_v04.sif"
   parameters: "-p 12"
 
 slow5_merge:
@@ -58,6 +65,11 @@ mosdepth:
   sif: "mosdepth.sif"
   parameters: "--no-per-base -t 6"
 
+nanoplot:
+  sif: "nanoPlot.sif"
+  parameters: "--tsv_stats --info_in_report --N50 --huge"
+  script: "parserHTML.py"
+
 bedtools:
   sif: "bedtools.sif"
   intersect1: "-F 1.0"
@@ -71,7 +83,7 @@ computeQC:
 cuteSV:
   sif: "cuteSV.sif"
   parameters: " --min_support 2 --min_size 50 --max_cluster_bias_INS 100 --diff_ratio_merging_INS 0.3 --max_cluster_bias_DEL 100 --diff_ratio_merging_DEL 0.3 --report_readid"
-  threads: 8
+  threads: 24
 
 sniffles:
   sif: "sniffles.sif"
@@ -103,7 +115,7 @@ clair3:
 nanocaller:
   sif: "nanoCaller.sif"
   script: "cleanNanoCaller.py"
-  parameters: "--prefix ont --preset ont --sequencing ont"
+  parameters: "--prefix ont"
   threads: 8
 
 pepper:
@@ -122,6 +134,7 @@ snpEff:
   parameters: ""
   sif: "snpEff.sif"
 
+subsamplingRatioForQDNA: ""
 cnv:
   deeptoolssif: "deeptools.sif"
   bigwigsif: "bigwig.sif"

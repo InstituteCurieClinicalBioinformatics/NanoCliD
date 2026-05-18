@@ -1,5 +1,5 @@
 use-singularity: true
-singularity-args: '-B GIT_DIR/utils/,GIT_DIR/annotations/,REF_DIR,GIT_DIR/annotations/nanovar/:/bnd'
+singularity-args: '-B GIT_DIR/utils/,GIT_DIR/annotations/,REF_DIR'
 singularity-prefix: "GIT_DIR/singularity/"
 jobs: 100
 latency-wait: 36000

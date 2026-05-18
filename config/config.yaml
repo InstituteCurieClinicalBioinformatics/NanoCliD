@@ -1,4 +1,5 @@
 bed: ""
+epicBed: "EPIC.hg19.manifest.bed"
 run: ""
 type: ""
 genome_version: ""
@@ -9,10 +10,13 @@ genomeFile: ""
 containers_path: ""
 
 guppy:
-  parameters_cpu: "--chunks_per_runner 512 -q 0 --min_qscore 7 -c dna_r9.4.1_450bps_hac.cfg --compress_fastq --recursive"
-  parameters_gpu: "--device 'cuda:all' --chunk_size 2500 --chunks_per_runner 512 --gpu_runners_per_device 128 --num_callers 8 -q 0 --min_qscore 7 -c dna_r9.4.1_450bps_hac.cfg --compress_fastq --disable_pings --recursive --port 5555"
-  runner_cpu: "guppy_basecaller"
-  runner_gpu: "guppy_basecall_client"
+  parameters_standalone: "--chunks_per_runner 512 --gpu_runners_per_device 128 -q 0 --min_qscore 7 -c FLOWCELL --compress_fastq --disable_pings --recursive -x cuda:all"
+  sif: "guppy_6.5.7.sif"
+
+dorado:
+  parameters: "--emit-fastq --min-qscore 7 -x cuda:all"
+  model: "/usr/local/bin/FLOWCELL"
+  sif: "dorado_v0.7.2.sif"
 
 minimap2:
   mmi: ""
@@ -27,21 +31,44 @@ samtools_sort:
 samtools_ontarget:
   parameters: "-bh -@ 8"
 
-nanopolish:
-  sif: "nanopolish.sif"
+pod5tools:
+  sif: "pod5tools.sif"
 
-nanopolish_call_methylation:
-  parameters: "-q cpg -t 8 -v --progress -K 2048"
+slow5tools:
+  sif: "slow5.sif"
+  parameters: "-p 24"
+
+bluecrab:
+  sif: "bluecrab_v04.sif"
+  parameters: "-p 12"
+
+slow5_merge:
+  parameters: "-t 24"
+
+f5c:
+  bin: "/f5c-v1.3/f5c"
+  parameters: "-t 24"
+  sif: "f5c.sif"
+
+f5c_call_methylation:
+  parameters: "--verbose -t 8 --profile-cpu=yes -K 2048"
+
+calculate_methylation_frequency: "-c 2.5 -s"
 
 samtools_merge:
   parameters: "-@ 8 -O BAM"
 
 samtools_stats:
-  parameters: "-S RG"
+  parameters: "-F 4 --split RG"
 
 mosdepth:
   sif: "mosdepth.sif"
   parameters: "--no-per-base -t 6"
+
+nanoplot:
+  sif: "nanoPlot.sif"
+  parameters: "--tsv_stats --info_in_report --N50 --huge"
+  script: "parserHTML.py"
 
 bedtools:
   sif: "bedtools.sif"
@@ -58,11 +85,6 @@ cuteSV:
   parameters: " --min_support 2 --min_size 50 --max_cluster_bias_INS 100 --diff_ratio_merging_INS 0.3 --max_cluster_bias_DEL 100 --diff_ratio_merging_DEL 0.3 --report_readid"
   threads: 24
 
-nanovar:
-  sif: "nanovar.sif"
-  parameters: "--data_type ont --minlen 50"
-  threads: 8 
-
 sniffles:
   sif: "sniffles.sif"
   parameters: "--minsupport 2 --minsvlen 50 --output-rnames --phase --non-germline"
@@ -71,6 +93,9 @@ svim:
   sif: "svim.sif"
   parameters: "--min_sv_size 50 --skip_genotyping "
   qual: 5
+
+concatSV:
+  script: "concatSV.py"
 
 survivor:
   sif: "survivor.sif"
@@ -82,17 +107,21 @@ annotSV:
 
 clair3:
   sif: "clair3.sif"
-  model_path: "/opt/conda/bin/models/ont_guppy5" 
+  parameters: "--platform=ont"
+  model_path_r10: "/git/rerio/clair3_models/r1041_e82_400bps_hac_g632"
+  model_path_r9: "/opt/models/ont_guppy5"
   threads: 8
 
 nanocaller:
   sif: "nanoCaller.sif"
+  script: "cleanNanoCaller.py"
   parameters: "--prefix ont"
   threads: 8
 
 pepper:
   sif: "pepper.sif"
-  parameters : "--ont_r9_guppy5_sup"
+  parameters_r9 : "--ont_r9_guppy5_sup"
+  parameters_r10 : "--ont_r10_q20"
   threads : 12
 
 combineVariants:
@@ -105,19 +134,20 @@ snpEff:
   parameters: ""
   sif: "snpEff.sif"
 
-circos:
-  script: "circos.py"
-
+subsamplingRatioForQDNA: ""
 cnv:
   deeptoolssif: "deeptools.sif"
   bigwigsif: "bigwig.sif"
+  cnvfrombamsif: "cnv_from_bam.sif"
   script: "cnv_gc.R"
   threads: 8
   effectiveGenomeSize: 2864785220 
-  binSize: 1000
   brain_bed_5mb: "brain_genes_flanking_5Mb_hg19.bed"
   brain_bed: "brain_genes_hg19.bed"
   genome_subsampling: "hg19_subsampling.fa"
 
 R:
   sif: "R.sif"
+
+wildcards:
+  samples: []

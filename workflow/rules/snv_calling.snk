@@ -186,7 +186,7 @@ rule snpEff:
     log:
         os.path.join(LOG_PATH, "calling/SNV", "{mergedSamples}_snpEff.log")
     container:
-        CONTAINERS_PATH + config["bioInfoCliTools"]["sif"]
+        CONTAINERS_PATH + config["snpEff"]["sif"]
     shell:
         """
         java {params.javaParameters} -Djava.io.tmpDir={params.tmpDir} -jar /usr/local/bin/snpEff/snpEff.jar eff {params.parameters} \

@@ -10,7 +10,13 @@ genomeFile: ""
 containers_path: ""
 
 guppy:
-  parameters: "--chunks_per_runner 512 --gpu_runners_per_device 128 -q 0 --min_qscore 7 -c FLOWCELL --compress_fastq --disable_pings --recursive --port /tmp/.guppy/5555"
+  parameters_standalone: "--chunks_per_runner 512 --gpu_runners_per_device 128 -q 0 --min_qscore 7 -c FLOWCELL --compress_fastq --disable_pings --recursive -x cuda:all"
+  sif: "guppy_6.5.7.sif"
+
+dorado:
+  parameters: "--emit-fastq --min-qscore 7 -x cuda:all"
+  model: "/usr/local/bin/FLOWCELL"
+  sif: "dorado_v0.7.2.sif"
 
 minimap2:
   mmi: ""
@@ -30,9 +36,10 @@ pod5tools:
 
 slow5tools:
   sif: "slow5.sif"
+  parameters: "-p 24"
 
 bluecrab:
-  sif: "bluecrab_v03.sif"
+  sif: "bluecrab_v04.sif"
   parameters: "-p 12"
 
 slow5_merge:
@@ -57,6 +64,11 @@ samtools_stats:
 mosdepth:
   sif: "mosdepth.sif"
   parameters: "--no-per-base -t 6"
+
+nanoplot:
+  sif: "nanoPlot.sif"
+  parameters: "--tsv_stats --info_in_report --N50 --huge"
+  script: "parserHTML.py"
 
 bedtools:
   sif: "bedtools.sif"
@@ -122,6 +134,7 @@ snpEff:
   parameters: ""
   sif: "snpEff.sif"
 
+subsamplingRatioForQDNA: ""
 cnv:
   deeptoolssif: "deeptools.sif"
   bigwigsif: "bigwig.sif"

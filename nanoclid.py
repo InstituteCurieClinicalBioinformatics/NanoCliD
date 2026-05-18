@@ -309,7 +309,8 @@ class NanoClid:
         config["reportFiles"] = self.reportFiles
         config["fast5Dir"] = self.fast5Paths
         if not curieNetwork:
-            config["snpEff"]["dataDir"] = self.snpEffDir
+            config["snpEff"]["dataDir"] = {}
+            config["snpEff"]["dataDir"][self.genomeVersion] = self.snpEffDir
         config["fromBlow5"] = self.fromBlow5
         config["fromFast5"] = self.fromFast5
         config["fromPod5"] = self.fromPod5
