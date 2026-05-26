@@ -22,7 +22,7 @@ minimap2:
   mmi: ""
   parameters: "-ax map-ont --MD"
   sif: "minimap2.sif"
-  cn: "Institut_Curie"
+  cn: "Externe"
 
 samtools_sort:
   parameters: "-@ 8 -O BAM"
